@@ -16,7 +16,7 @@ bash bluesweep.sh --root /mnt/victim --full
 Version **0.2.0** implements all 14 planned module areas at varying depths. It is a triage
 scanner, not a proof that a machine is clean or a complete replacement for specialist
 forensic tools. See [the original design](plan.md) and the
-[474-heading local linPEAS comparison](docs/LINPEAS-COVERAGE.md) for exact scope and gaps.
+[local linPEAS coverage comparison](docs/LINPEAS-COVERAGE.md) for exact scope and gaps.
 
 ## What it checks
 

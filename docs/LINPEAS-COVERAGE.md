@@ -3,6 +3,18 @@
 Reference: `/home/miles/notes/CYBER/linpeas.sh`, 10,128 lines, reviewed locally.
 SHA-256: `e59effc3dbb71d69afb1f517f10648e544f48394747f4e6a2ed6c119a8d77395`.
 
+Scale of the reference, derived so it can be rechecked:
+
+```sh
+rg -c 'print_[0-9]*title' linpeas.sh                          # 480 occurrences
+rg -c '^\s*(function\s+)?print_[0-9]*title\s*\(' linpeas.sh    # 3 are function definitions
+rg -o 'print_[0-9]*title\s+"[^"]+"' linpeas.sh | sed 's/.*"\(.*\)"/\1/' | sort -u | wc -l
+```
+
+That is **477 heading call sites, 448 unique heading strings**. Neither is a coverage
+figure — they size the reference, not what bluesweep implements. The per-area ledger
+below is the actual scope statement.
+
 This is a coverage ledger, **not a claim of full linPEAS parity**. Filename patterns
 are inventory data; finding a config file is not equivalent to implementing its
 application-specific parser. bluesweep independently implements the local defensive
