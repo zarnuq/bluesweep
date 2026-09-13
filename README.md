@@ -36,6 +36,19 @@ forensic tools. See [the original design](plan.md) and the
 | Services | distcc, DNS/BIND, SMTP/Postfix/Exim, FTP, MySQL/MariaDB, PostgreSQL, VNC, HTTP/PHP, Redis, MongoDB, MQTT, rsync, Supervisor, SNMP, Elasticsearch, CI security config, LDAP, NFS, Samba; ICS/Modbus observations remain informational |
 | Containers / credentials | Runtime control-socket exposure, Kubernetes credential paths, process capabilities/seccomp, host-access configuration; 271 application/credential filename patterns and redacted credential-content indicators |
 | Defender agents | Wazuh, osquery, auditd, Falco, Velociraptor and other known agents; local enrollment/config metadata; CRIT drift when a previously running agent is observed stopped |
+| Binary provenance (`--full`) | `dpkg-query -S` / `rpm -qf` over every running executable: which binaries no package owns, graded by where they sit. Unowned inside `/usr/bin`, `/bin`, `/sbin` is treated differently from unowned inside `/usr/local` or `/opt`, where locally built software legitimately lives |
+| Unknown services | Every listening socket scored on kernel-reported attributes rather than on a service name: unowned or deleted or memfd-backed executable, transient/user-writable path or working directory, absence of a systemd unit, binding beyond loopback, process name not matching the executable. This is the inverse of the name-driven service checks - a listener matching no known profile is what surfaces, not what is skipped |
+| Outbound peers | Established connections to non-private peers, raised above inventory level when the owning process also fails provenance, placement or unit tests, or when the socket is held by a shell or interpreter. Reverse shells and beacons bind nothing, so for that implant class this is the only network evidence there is |
+| Binary structure (`--full`) | ELF header and program-table anomalies over running executables and unpackaged/transient-path binaries: UPX packing, removed section header table, `ET_EXEC` with `PT_DYNAMIC` and no `PT_INTERP`, writable+executable load segments, and Shannon entropy above 7.2 across the first 64 KiB. Structural and offline - no signature database, no hashes, no network |
+| binfmt_misc | Live interpreter registrations read from `/proc/sys/fs/binfmt_misc`, plus the `binfmt.d` configuration systemd replays at boot. A registration made at runtime exists nowhere on disk, so it survives every audit that only reads `/etc` |
+| Kernel-run helpers | `core_pattern` (a `\|` value makes the kernel pipe every crash to that program, as root), `kernel.modprobe`, `poweroff_cmd`, `uevent_helper`, legacy `hotplug` - each read live from the kernel and compared against the distribution default, plus the `sysctl.conf`/`sysctl.d` entries that restore a hostile value at boot. systemd-coredump and apport are recognised and not flagged |
+| Auto-executed directories | ~70 directories whose contents run automatically without being cron or a unit: `if-up.d`/`if-down.d`, dhclient enter/exit hooks, networkd-dispatcher, systemd sleep/shutdown/generator hooks, `Xsession.d` and GDM/LightDM hooks, kernel and initramfs postinst hooks, dpkg/apt/dnf/yum hooks, `tmpfiles.d`, `modules-load.d`, `sysctl.d`, `ld.so.conf.d`, `rsyslog.d`, `logrotate.d`, `acpi` actions. Entries are inventoried and scored for non-root ownership, world-writability, and - through the same command grammar as cron and units - remote-fetch and reverse-shell content |
+| TCP wrappers | `hosts.allow`/`hosts.deny` `spawn`, `twist` and `aclexec` directives, which run a shell command on every matching connection |
+| SSH client-side exec | `ProxyCommand`, `LocalCommand`, `PermitLocalCommand` and `Match exec` in the system `ssh_config`, its drop-ins, and every user's `~/.ssh/config` - a backdoor that fires when an operator sshes *out* of the box, including the operator hunting the intrusion |
+| eBPF and dynamic tracing | Pinned objects under `/sys/fs/bpf`, installed `kprobe_events`/`uprobe_events`, and `bpftool prog list` where available. An eBPF implant hides processes and filters packets without a kernel module, so none of the module-list divergence checks see it |
+| Hidden system files | Dot-files and dot-directories inside `/usr/bin`, `/bin`, `/sbin`, `/lib`, `/etc`, `/boot`, `/opt`, `/srv`, `/var/www` and `/dev/shm`, with packaging conventions (portage keepers, RHEL placeholders, the Fedora build-id tree, etckeeper, overlayfs whiteouts) allowlisted |
+| Coinminers | Mining-pool URLs, miner binaries and miner flags across process command lines and the bounded candidate config set - the most common payload on a compromised competition host, and one that no persistence check sees because it is usually *started by* persistence rather than being it |
+| Known-bad ports and artifacts | Commodity implant and coinminer artifact paths, and listeners on ports commonly used by backdoors and handlers. Both are shallow offline IOC lists reported as evidence, never as a verdict |
 
 ### Bashrc files really are scanned
 
@@ -169,6 +182,13 @@ OpenSSL and hashing utilities. No package manager or network connection is neede
   hidden/control-character names and the 271 application filename patterns.
 - Maximum 20,000 walk candidates; content/hash scans generally cap files at 2 MiB;
   selected finding categories cap at 200. Oversized record fields are capped explicitly.
+- Package-ownership queries run in `--full` only, batched 64 executables per manager
+  invocation, and never against `--root` images: the host database does not describe a
+  mounted image. Without a working `dpkg-query -S` / `rpm -qf` the answer is UNKNOWN and
+  is reported as a SKIP, never as ownership.
+- The ELF scan reads at most 64 KiB per file and caps candidates at 200. It deliberately
+  does not re-read packaged content under `/usr/bin`, which `dpkg --verify` / `rpm -Va`
+  already speak for; it reads what those two cannot.
 - Bash watchdogs limit child commands; overall check budgets are 60 seconds quick and
   300 seconds full, with 30/60-second stage limits. A stuck kernel I/O operation cannot
   always be interrupted immediately; permission/candidate/time limits mean incomplete scans.
@@ -194,7 +214,9 @@ service misconfigurations, custom webroots/keys, snapshot changes, hostile filen
 no-clobber, output exclusion and an unchanged offline fixture after a normal scan.
 Python is a development-test dependency only.
 
-Environment-gated validation remains: real hidden-kernel attacks, actual mawk and the
+Environment-gated validation remains: real hidden-kernel attacks, package-ownership
+provenance and the listener/outbound scores built on it (these need a real dpkg or rpm
+database, so a Portage or Alpine host reports them as SKIP), actual mawk and the
 full distribution container matrix, syscall-level no-write/fork accounting, and service
 integration against running daemon instances. POSIX-mode gawk tests are not an actual
 mawk run. `--bench` does not claim an unmeasured fork budget.
@@ -210,6 +232,13 @@ Kernel taint is a diagnostic signal, not proof of compromise; bit descriptions f
 
 `--root` prefixes target paths but is **not filesystem confinement**: symlinks can resolve
 outside the image. Use a known-good isolated analysis environment for adversarial images.
+The unknown-service and outbound scores are heuristics over attributes, not verdicts: an
+administrator's hand-built daemon in `/opt` scores like an implant does, and an implant
+that is packaged, unit-managed and placed in `/usr/sbin` scores like a daemon. The binary
+structure rules describe what compilers and linkers do not emit, so a deliberately packed
+vendor tool is a true positive of packing and a false positive of malice. None of it is a
+substitute for a signature engine, and no rule here reads file content for known payloads.
+
 The tool does not claim complete application grammar/include resolution, authenticated
 SQL audit, server-side enrollment verification, vulnerability-database coverage or full
 linPEAS parity. The [coverage ledger](docs/LINPEAS-COVERAGE.md) lists those distinctions.

