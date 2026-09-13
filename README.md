@@ -243,6 +243,30 @@ The tool does not claim complete application grammar/include resolution, authent
 SQL audit, server-side enrollment verification, vulnerability-database coverage or full
 linPEAS parity. The [coverage ledger](docs/LINPEAS-COVERAGE.md) lists those distinctions.
 
+### OPNsense and pfSense
+
+The appliance ships no bash and mounts no procfs, so bluesweep cannot run on it. It reads a
+**copy of the appliance filesystem from a Linux host** instead:
+
+```sh
+ssh root@router tar -cf - /conf /etc /usr/local/etc /var/cron /root | tar -xf - -C /mnt/opn
+./bluesweep.sh --root /mnt/opn --baseline router.snap     # before the attack window
+./bluesweep.sh --root /mnt/opn --diff router.snap         # repeatedly, afterwards
+```
+
+`/conf/config.xml` holds essentially the whole system state — accounts, SSH keys,
+privileges, firewall and NAT rules, cron, installed packages and a `<revision>` stamp — so
+it is parsed into per-item observations, and a router account added by an attacker appears
+as `ADDED OPNUSER` at CRIT. Hashes and key material are deliberately **not** recorded: user
+records carry the hash *type* and a yes/no for keys, never the values.
+
+Everything `/proc`-derived SKIPs, and says so. The filesystem checks do run: FreeBSD
+auto-run directories (`rc.d`, `rc.syshook.d`, `periodic`, `devd`, `ppp` hooks) are scored by
+the same command grammar as Linux cron, so a `curl | sh` dropped in `rc.syshook.d/start` is
+a CRIT. A config.xml diff catches anything done through the UI or API; it does **not** catch
+shell-level changes that bypass the configuration, which is why the filesystem checks matter
+alongside it.
+
 Normal scans create no files or configuration and do not act on target processes/services.
 Explicit snapshots/exports/sandbox tests write files. Reading may change atime; scans and
 child commands may appear in host audit logs. Watchdogs terminate only scanner-owned child

@@ -69,6 +69,19 @@ mangle any pattern containing `\`. Use leading `SIG` records.
   discrepancy (re-stat `/proc/N`, or re-ask `ps -p N`). Otherwise any process that starts or
   exits mid-scan looks like it's hiding.
 
+### New OBS types must be added to `SNAPSHOT_PROG`
+
+`SNAPSHOT_PROG` carries an explicit **allowlist** of observation types and silently drops
+everything else (`} else next`). A type that is not listed never reaches a baseline and is
+never diffed — the check looks like it works, while the drift detection that is the tool's
+highest-value mode quietly ignores it. This already went wrong once: nineteen observation
+types were added across three rounds of work and none of them diffed.
+
+Two branches: stable-key/changing-value types (`FILE`, `OPNUSER`, `KERNELEXEC`, ...) go in
+the first; types where one key legitimately has many lines (`CRON`, `AUTORUN`, `TCPWRAP`,
+...) go in the second, which folds the value into the key. Then give the type a severity in
+`DIFF_PROG`'s `drift()` — an added `KERNELEXEC` or `OPNUSER` is CRIT, not the MED default.
+
 ### A SKIP is never a pass
 
 Every check declares a fallback chain ending in an explicit `skip` with a reason. A check
@@ -170,6 +183,12 @@ Never traverse NFS/CIFS/FUSE — a dead server hangs the walk forever.
 
 ## Verify before claiming done
 
+**`PATH` is hard-set near the top of the script** (`PATH=/usr/sbin:/usr/bin:/sbin:/bin`), so
+a `PATH=/tmp/fb:$PATH ./bluesweep.sh` harness is silently ignored and proves nothing — the
+run uses the system tool and passes. To test against a fake `awk`, `dpkg-query` or `rpm`,
+rewrite that line in a scratch copy, and have the fake log its invocations so you can
+confirm it was actually reached.
+
 ```sh
 bash -n bluesweep.sh                      # syntax
 ./bluesweep.sh --selftest lint            # banned constructs, gawk-isms
@@ -179,7 +198,8 @@ shellcheck -s bash bluesweep.sh           # triage warnings, don't blanket-disab
 
 # mawk compatibility (the failure that passes locally and breaks on Ubuntu)
 printf '#!/bin/sh\nexec gawk --posix "$@"\n' > /tmp/fb/awk && chmod +x /tmp/fb/awk
-PATH=/tmp/fb:$PATH ./bluesweep.sh --quick
+sed 's|^PATH=/usr/sbin.*|PATH=/tmp/fb:&|' bluesweep.sh > /tmp/posix.sh
+bash /tmp/posix.sh --selftest unit && bash /tmp/posix.sh --selftest sandbox
 
 # no ERROR findings == every check yields a verdict
 ./bluesweep.sh --raw | awk -F'\t' '$1=="FIND" && $3=="ERROR"{print $2}'
@@ -210,8 +230,16 @@ These are product requirements, not style preferences:
 ## Out of scope — don't add these
 
 - **Windows.** No PowerShell counterpart; documented gap.
-- **BSD/OPNsense.** No `/proc` means the divergence checks — the point of the tool — don't
-  port.
+- **BSD/OPNsense, running natively.** The appliance ships no bash and mounts no procfs, and
+  with no `/proc` the divergence checks — the point of the tool — have nothing to diff
+  against. Do not attempt a POSIX-sh rewrite of 400+ bash constructs.
+
+  **Offline `--root` against a copied appliance tree IS supported** and is the only
+  sanctioned form: it runs on a Linux host, so bash and GNU tooling are the scanner's, not
+  the target's. `TARGET_OS` is set to `freebsd` from the tree layout (`/conf/config.xml`, or
+  `master.passwd` beside `/usr/local/etc/rc.d`), never from `uname`. FreeBSD paths are added
+  to the existing path lists unconditionally rather than branched on — they simply do not
+  exist on a Linux target. Everything `/proc`-derived still SKIPs, and must keep saying so.
 - **Resident scanning, signature auto-update, quarantine.** This is an audit tool, not an
   antivirus; several competition rulesets ban AV outright.
 - **YARA, hash reputation, any network lookup.** Signature coverage is deliberately shallow

