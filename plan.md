@@ -18,7 +18,7 @@ literal strings `beacon` and `red-team`. It will live in its own repo.
 
 **Driving use case** (from `~/Downloads/Space RVB-1.1.pdf`, PSU CCSO Red vs Blue 2026): a
 six-hour defense of an Artemis-themed ground station, 30-minute hardening window before red
-team goes live, scoring 50% uptime / 15% incident response / 15% injects / 15% C-suite. The
+team goes live, scoring 50% uptime / 15% incident response / 15% injects / 15% C-suite / 5% The Game. The
 tool must be generic, but every Linux-reachable element of that packet must be covered by some
 generic capability. See *Competition coverage* below for the traceability check.
 
@@ -269,6 +269,10 @@ over a directory, never one grep per file.
 | M12 | hardening | SELinux/AppArmor, firewall present+enabled, sysctl posture (ASLR, `kptr_restrict`, `dmesg_restrict`, `rp_filter`), world-readable secrets, NFS exports, Samba shares |
 | M13 | **services** | Per-service hardening for the daemons that actually get scored — see below |
 | M14 | **agents** | Security-agent allowlist: detect and *protect* Wazuh/osquery/auditd/Falco/Velociraptor. Never flag them, verify they're running and enrolled, and emit CRIT if one that was present in the baseline has stopped — attackers kill your telemetry first |
+| M34 | **audit coverage** | Loaded `auditctl -l` rules (or `/etc/audit/rules.d` offline) against a baseline set: execve, identity files, sudoers, module loading, clock changes, mounts, privileged execution. Reported at INFO/LOW and labelled a telemetry gap — a missing rule does not make the host more vulnerable, only harder to investigate. Coverage loss between snapshots is HIGH drift, because that *is* what impairing defences looks like |
+| M35 | **process lineage** | The `/proc` answer to Sysmon event 1. Not "this process exists" but "this process descends from something that should never have started it": a shell forked by a network service, a listening socket owned by an interpreter, execution from a world-writable directory, a listener descending from the scheduler, a process whose `comm` disagrees with its exe. The last is gated on a second signal — listening, root-owned, or transient path — because a renamed process on its own is what every browser and JVM looks like |
+| M36 | **sudo/doas escalation** | GTFOBins, as a classification rather than a grep. Every rule is judged by what it grants: unrestricted passwordless (CRIT), a wildcard the author never enumerated (HIGH), a *bare* shell-capable binary (HIGH), a narrow delegation (LOW, listed for confirmation). A rule naming a command with fixed arguments is not a shell escape, because sudoers matches those literally — treating them as one is the largest single source of noise in sudo auditing, and it is also wrong |
+| M37 | **auth analytics** | fail2ban/OSSEC-style correlation over the authentication records already collected: a success from an address that had been failing, direct root logins, concentrated failures. Volume alone is never a compromise finding — the internet knocks on port 22 all day |
 
 ### M13 service modules
 
@@ -324,6 +328,40 @@ comment block beside the constants so it stays consistent:
 what keeps a blue-team tool from being a false-positive firehose — CRIT/possible renders
 differently from CRIT/confirmed.
 
+**ATT&CK technique** is a tenth field on every `FIND`, prefix-matched from `SIG_ATTACK`, so
+output drops into an existing detection-engineering workflow without a translation step. It
+is a mapping convenience, not a claim that the technique was observed.
+
+### The triage stage — the false-positive budget
+
+Detection stages are written to be sensitive; one stage is written to be specific. Splitting
+them means the sensitivity of a check and the noise it produces are separate decisions, and
+the second decision lives in one auditable place rather than being spread across sixty
+checks as "and also skip this case".
+
+`TRIAGE_PROG` sits between the rules and the renderer and does four things, in order:
+
+1. **Known-benign rules** (`SIG_BENIGN`) `drop`, force to `info`/`low`, or `demote` conditions
+   that are properties of how Linux works rather than of this host.
+2. **Corroboration.** Package ownership — resolved through `dpkg`, `rpm`, `portage` or `apk`
+   for the paths findings actually point at — demotes one level and names the package in the
+   evidence. Recently-modified system files are separately correlated against the package
+   manager's transaction log.
+3. **Rollup**, in the record stream rather than the renderer, so JSON consumers and the
+   terminal agree. `CRIT`/`HIGH` get a 5x ceiling; summarising a critical hides the paths an
+   operator has to act on.
+4. **ATT&CK annotation.**
+
+Two rails, because a suppression mechanism is also an attack surface: a `CRIT` at confidence
+`confirmed` can never be dropped and never falls more than one level, and `--no-suppress`
+replays every decision instead of applying it (`--raw` bypasses the stage entirely).
+
+The ordering preference is explicit: **fix the check, not the table.** A `SIG_BENIGN` row is
+for a genuine property of the platform. A check that matches the wrong thing is a bug, and
+the output shows the difference — `triage_suppressed` rising is a worse outcome than the
+finding never being raised. On the reference workstation the reported count fell from 179 to
+55; 5 of those 124 came from the suppression table and the rest from the checks.
+
 **Exit codes**, chosen not to collide with the shell's `1/2/126/127`:
 
 | Code | Meaning |
@@ -351,6 +389,10 @@ correct with no bash-only `PIPESTATUS`. `--exit-zero` for pipelines.
   and it's better practice anyway).
 - **`--hunt REGEX`**: generic content hunt across the walk candidate set, reported as INFO.
   Covers flag-hunting (`ARTEMIS\{`), custom IOC strings, or a known attacker marker.
+- **`--explain ID`**: what a check means, which triage rules apply to it, its ATT&CK
+  technique and how to confirm or dismiss it — read from the same tables the scan used, so
+  the explanation cannot drift from the behaviour.
+- **`--no-suppress` / `--rollup N`**: the triage controls described above.
 
 ### `--ir` — incident response report mode
 
@@ -494,7 +536,8 @@ environment-gated`.
 
 ## Competition coverage traceability
 
-Checked against `~/Downloads/Space RVB-1.1.pdf` so nothing in the packet is silently uncovered.
+Original design traceability, updated for 0.3.0. The [competition guide](docs/SPACE-RVB-1.1.md)
+is the current implementation/limitations map against `Space RVB-1.1.pdf`.
 
 | Packet element | Covered by |
 |---|---|
@@ -502,15 +545,15 @@ Checked against `~/Downloads/Space RVB-1.1.pdf` so nothing in the packet is sile
 | Hubble (Ubuntu 24.04) SSH / **SMTP** / HTTP / **VNC** | M06, M13-smtp (aliases + `.forward`), M11, M13-vnc |
 | Pathfinder (Ubuntu 22.04) SSH / **FTP** / HTTP / **MySQL** | M06, M13-ftp, M11, M13-mysql (incl. UDF) |
 | Sat (Ubuntu 22.04) **Modbus TCP** | M13-modbus, INFO-only |
-| Services may be relocated to new ports | No port assumptions anywhere; bind to observed listeners |
+| Services may be relocated to new ports | Process/socket association for recognized services; conventional-port inventory is labelled heuristic |
 | Uptime is 50% | `--remediate` tags every fix with the services it could disrupt; no auto-execution. *Per your call, no health-check or watch mode — the scoreboard covers that* |
 | IR is 15%, proof = processes/IPs/accounts/sessions | `--ir` builds exactly those four sections |
 | "Do NOT remove wazuh-agent" | M14 allowlists it, never flags it, and CRITs if it stops |
 | "No antivirus allowed" | No resident scanner, no signature auto-update, no quarantine. It's an audit tool — worth a one-line confirmation with White Crew regardless |
-| Subnet blocking forbidden | `--remediate` emits single-IP rules only |
+| Subnet blocking forbidden | `--remediate` emits comments only, with no firewall commands |
 | Flags `ARTEMIS{}` earn store tokens | `--hunt 'ARTEMIS\{'` |
 | Default password `Passw0rd123!` on 20 accounts | M02 duplicate-hash detection + `--weak-pass` |
-| Router (OPNsense) in scope | **Not covered** — documented gap, audit via its UI |
+| Router (OPNsense) in scope | Offline copied tree from Linux; no native appliance/runtime scan. Copies stay within the competition environment |
 | Columbia/Odyssey/Sputnik (Windows) | **Not covered** — documented gap |
 
 ---
@@ -534,6 +577,12 @@ Checked against `~/Downloads/Space RVB-1.1.pdf` so nothing in the packet is sile
    they find is either found by bluesweep or is a deliberate, documented scope exclusion.
 9. Service-module fixtures: a container running distccd, bind9, postfix, vsftpd and MySQL in
    deliberately weak configs; confirm each M13 check fires.
+10. **False-positive regression on a healthy host.** Record the finding count on a clean
+    workstation and a clean server and treat a rise as a defect, the same way a missed
+    detection is. Every suppression rail is separately tested: a confirmed CRIT cannot be
+    dropped, package ownership demotes exactly one level and names the package, rollup spares
+    CRIT and HIGH, `--no-suppress` restores everything, and the credential scanner reports one
+    file out of a fixture set of seven, six of which were real false positives on real hosts.
 
 ## Known limits — stated in the script's own output and the README
 
@@ -550,5 +599,12 @@ Checked against `~/Downloads/Space RVB-1.1.pdf` so nothing in the packet is sile
 - No YARA, no hash reputation, no network lookups. Signature coverage is deliberately shallow
   and aimed at commodity and competition-grade persistence, not bespoke implants.
 - Detection only. It never remediates on its own.
+- **Suppression cuts both ways.** Every triage rule asserts that some condition is normal, and
+  a patient attacker can shape an implant to match one: name a `memfd` region `JITCode`,
+  install through the package manager, modify a file on a day an update ran. The mitigations
+  are that the rules are one readable table, that the two rails cannot be disabled from the
+  table side, and that `--no-suppress` exists. A scanner that reports everything gets ignored
+  and a scanner that reports nothing is a liability; this picks a point between and shows its
+  work, which is not the same as being right.
 - Unprivileged ceiling: no other users' `/proc/*/fd`, no `/etc/shadow`, no `/proc/*/environ`,
   no kallsyms, no auditd state — roughly 40% of the value.

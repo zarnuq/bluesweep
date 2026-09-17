@@ -13,10 +13,57 @@ sudo bash bluesweep.sh --quick --diff before.base
 bash bluesweep.sh --root /mnt/victim --full
 ```
 
-Version **0.2.0** implements all 14 planned module areas at varying depths. It is a triage
+Version **0.3.0** implements all 14 planned module areas at varying depths. It is a triage
 scanner, not a proof that a machine is clean or a complete replacement for specialist
 forensic tools. See [the original design](plan.md) and the
 [local linPEAS coverage comparison](docs/LINPEAS-COVERAGE.md) for exact scope and gaps.
+
+For the supplied Penn State packet, see the [Space RVB 1.1 competition guide](docs/SPACE-RVB-1.1.md):
+scoring, host/service map, rules, triage priorities, detection limits and PDF submission workflow.
+
+Version 0.3.0 adds multiline BIND ACL parsing, explicit distcc/VNC/MySQL runtime policy
+checks, user-unit/drop-in command inspection and service-policy drift. It reduces noise
+from ordinary PHP, disabled MySQL options, standard startup hooks and symlink permission
+bits. Standalone `--remediate` streams directly to its requested file without scratch files.
+
+## The triage stage: why the output is short
+
+Detection stages are written to be sensitive. One stage, `TRIAGE_PROG`, is written to be
+specific, and it is the **only** place in the program allowed to lower a severity or hide a
+finding. Everything it does is reversible from the command line and visible in the summary
+line, because suppression you cannot audit is worse than noise.
+
+It does four things:
+
+1. **Known-benign rules.** An editable table (`SIG_BENIGN`, in the signature block) drops or
+   downgrades conditions that are properties of *how Linux works* rather than of your host:
+   JIT compilers mapping `memfd` regions, `/etc/nsswitch.conf` using `passwd:` as a map name,
+   `/etc/resolv.conf` having a recent mtime.
+2. **Corroboration.** A finding whose target is owned by an installed package is one level
+   less alarming than the same finding on an unowned file, and the package name is added to
+   the evidence. Ownership is resolved through `dpkg`, `rpm`, `portage` or `apk`.
+3. **Rollup.** Repeats of one condition collapse into a single counted finding, in the record
+   stream rather than in the renderer, so JSON consumers and the terminal agree on what was
+   reported. `CRIT` and `HIGH` get a five-times-larger ceiling: summarising a critical hides
+   the paths you have to act on.
+4. **ATT&CK annotation.** Each finding carries a technique id, in the terminal output and as a
+   `technique` field in NDJSON.
+
+Two rails, because a suppression mechanism is also an attack surface:
+
+- A `CRIT` at confidence `confirmed` can never be dropped and can never fall more than one
+  level, whatever the tables say.
+- `--no-suppress` disables the table entirely and annotates every finding with the decision
+  triage *would* have made. `--raw` bypasses the stage completely.
+
+`--explain <CHECK_ID>` prints what a check means, which triage rules apply to it, its ATT&CK
+technique, and how to confirm or dismiss it, from the same tables the scan itself used.
+
+On the clean developer workstation used as the reference host this takes the reported
+findings from **179 to 55**, and only **5** of that reduction came from the suppression
+table - the rest came from fixing the checks. That ratio is the point, and it is visible on
+every run: the summary line prints how many findings triage suppressed, downgraded and
+collapsed.
 
 ## What it checks
 
@@ -32,7 +79,7 @@ forensic tools. See [the original design](plan.md) and the
 | Authentication stack | PAM permit/exec/nonstandard module indicators; NSS configuration inventory; local privilege-policy checks |
 | File integrity | Set-ID binaries/interpreters, world/group writable configuration, root-owned writable executables, orphan ownership, recent files, content/metadata fingerprints, extended ACLs, file capabilities, immutable flags, optional package verification |
 | Logs / sessions | Empty accounting logs, history suppression, audit-rule availability, recent authentication/command events, controlling terminals and session/SSH/GPG socket permissions |
-| Web | nginx/Apache webroot discovery, bounded weighted PHP/JSP/ASP heuristics, PHP hidden in image extensions, `.htaccess`/`.user.ini`, automatic prepend/append and proxy/CGI configuration |
+| Web | nginx/Apache webroot discovery, bounded weighted PHP/JSP/ASP heuristics requiring combined indicators, PHP hidden in image extensions, `.htaccess`/`.user.ini`, automatic prepend/append and proxy/CGI configuration |
 | Services | distcc, DNS/BIND, SMTP/Postfix/Exim, FTP, MySQL/MariaDB, PostgreSQL, VNC, HTTP/PHP, Redis, MongoDB, MQTT, rsync, Supervisor, SNMP, Elasticsearch, CI security config, LDAP, NFS, Samba; ICS/Modbus observations remain informational |
 | Containers / credentials | Runtime control-socket exposure, Kubernetes credential paths, process capabilities/seccomp, host-access configuration; 271 application/credential filename patterns and redacted credential-content indicators |
 | Defender agents | Wazuh, osquery, auditd, Falco, Velociraptor and other known agents; local enrollment/config metadata; CRIT drift when a previously running agent is observed stopped |
@@ -48,6 +95,12 @@ forensic tools. See [the original design](plan.md) and the
 | eBPF and dynamic tracing | Pinned objects under `/sys/fs/bpf`, installed `kprobe_events`/`uprobe_events`, and `bpftool prog list` where available. An eBPF implant hides processes and filters packets without a kernel module, so none of the module-list divergence checks see it |
 | Hidden system files | Dot-files and dot-directories inside `/usr/bin`, `/bin`, `/sbin`, `/lib`, `/etc`, `/boot`, `/opt`, `/srv`, `/var/www` and `/dev/shm`, with packaging conventions (portage keepers, RHEL placeholders, the Fedora build-id tree, etckeeper, overlayfs whiteouts) allowlisted |
 | Coinminers | Mining-pool URLs, miner binaries and miner flags across process command lines and the bounded candidate config set - the most common payload on a compromised competition host, and one that no persistence check sees because it is usually *started by* persistence rather than being it |
+| Sudo and doas escalation | Every rule classified by what it actually grants, not by whether it says `NOPASSWD`: unrestricted passwordless access, a wildcard the rule author never enumerated, a bare binary that returns a shell (the GTFOBins class - `tar`, `find`, `vi`, `python`, ~70 more), or a deliberate narrow delegation listed at LOW so it can be confirmed. A rule naming a command *with fixed arguments* is not treated as a shell escape, because sudoers matches those literally |
+| Process lineage | Sysmon-style parentage reconstructed from `/proc`: a shell or interpreter forked by a network service (the webshell foothold), a listening socket owned by a shell (a bind shell), a process executing from a world-writable directory, a listener descending from the scheduler, and a process whose `comm` disagrees with its executable - the last gated on the process also listening, running as root, or living in a transient path, or every browser tab on a workstation is a finding |
+| Authentication analytics | Correlation over the authentication records the log collector already read, in the manner of fail2ban and the OSSEC log rules: a successful login from an address that had just been failing, direct root logins over the network, and concentrated failures. Volume alone is never reported as compromise |
+| Audit rule coverage | Loaded `auditctl -l` rules (or `/etc/audit/rules.d` for an offline image) against a baseline set - execve, identity files, sudoers, module loading, clock changes, mounts, privileged execution. Everything here is reported at INFO or LOW and labelled a **telemetry gap**: a missing audit rule does not make a host more vulnerable, only harder to investigate afterwards |
+| Change correlation | Recently-modified system files are checked against the package manager's own transaction log (`dpkg.log`, `apt/history.log`, `dnf.log`, `emerge.log`, `zypp/history`). A file that changed on a day the package manager ran is the change-management record agreeing with the filesystem. When the logs cannot be read nothing is suppressed - a correlation that cannot be made must never become an exoneration |
+| Process capabilities | Capability masks decoded to names and split into the set that is a privilege-escalation primitive (`sys_admin`, `sys_module`, `sys_ptrace`, `dac_override`, `bpf`, ...) and the set an ordinary daemon carries. The test uses the **effective** uid, so SUID-root helpers are not reported as unprivileged processes holding capabilities |
 | Known-bad ports and artifacts | Commodity implant and coinminer artifact paths, and listeners on ports commonly used by backdoors and handlers. Both are shallow offline IOC lists reported as evidence, never as a verdict |
 
 ### Bashrc files really are scanned
@@ -88,6 +141,9 @@ Dynamic source graphs, arbitrary `ZDOTDIR`, and shell condition evaluation are n
     --ir DIR           Evidence directory plus Markdown IR report
     --remediate FILE   New commented review script; no executable fixes
     --hunt REGEX       Content hunt within selected file candidates
+    --no-suppress      Disable known-benign triage; annotate what it would do
+    --rollup N         Collapse >N repeats into a counted rollup; default 10
+    --explain ID       Describe a check id, its triage rules and ATT&CK mapping
     --recent-days N    Recent file window, 1..99 days; default 7
     --weak-pass        Opt-in bounded local weak-password candidate test
     --weak-pass-file F Additional candidate file
@@ -120,11 +176,15 @@ skips are condensed; raw/JSON retains the individual records.
 
 ## Baseline and diff
 
+Version 0.3.0 uses baseline schema 2 (full-path unit keys and service-policy records).
+Preserve older snapshots and create a new baseline; `--force` cannot bypass a schema mismatch.
+
 Snapshots use the same collector as normal checks. They contain versioned META/OBS/SKIP
 records, never executable shell. Stable file, user, key, startup, cron/unit, listener,
 module, agent, group, privilege-state and package observations are curated for comparison.
 PIDs, socket inodes, uptime, log lengths and transient process-security fields are excluded.
-Process identity uses executable/argv rather than PID; selected scanner/helper identities
+Service security policies and process-associated listener ports are retained, including
+multiple instances of one executable. Process identity uses executable/argv rather than PID; selected scanner/helper identities
 are omitted to reduce noise.
 
 The scanner validates schema, size, record format, collection mode, hash tool, hostname and
@@ -155,8 +215,9 @@ Private SSH keys and shadow contents are not copied automatically.
 accounts, and sessions. Evidence references point to `records.tsv` line numbers. File
 mtime observations are converted to UTC; authentication timestamps retain their source
 format/timezone. Mtimes can be altered and connections do not establish attacker identity.
-The report is an analyst starting point, not automatic attribution or complete timeline
-reconstruction.
+The report includes an analyst-assessment template. It is a starting point, not automatic
+attribution or complete timeline reconstruction. It is Markdown; PDF conversion and
+submission are manual. Competition evidence must stay inside the competition environment.
 
 `--remediate` writes comments describing review steps and service-disruption risks. It
 contains no executable remediation, firewall blocks, service stops, or agent removal.
@@ -208,18 +269,24 @@ POSIXLY_CORRECT=1 python3 tests/test_integration.py
 ```
 
 Native tests cover kernel parsers, command rules, service fixtures, rendering/exits,
-agent/mtime drift, SUID/webshell/PAM/history fixtures and clean detector fixtures. Python
+agent/mtime drift, SUID/webshell/PAM/history fixtures and clean detector fixtures. They also
+cover the triage stage specifically, because a suppression mechanism that is quietly widened
+is indistinguishable from a broken scanner: that a confirmed critical cannot be dropped, that
+package ownership demotes exactly one level and names the package, that rollup spares CRIT
+and HIGH, that `--no-suppress` restores everything, that the credential scanner reports one
+file out of seven fixtures each of which was a real false positive, and that ordinary
+sudoers, PAM and process lineage produce nothing. Python
 integration tests exercise whole-script CLI/export paths, clean images, shell variants,
 service misconfigurations, custom webroots/keys, snapshot changes, hostile filenames,
 no-clobber, output exclusion and an unchanged offline fixture after a normal scan.
 Python is a development-test dependency only.
 
 Environment-gated validation remains: real hidden-kernel attacks, package-ownership
-provenance and the listener/outbound scores built on it (these need a real dpkg or rpm
-database, so a Portage or Alpine host reports them as SKIP), actual mawk and the
-full distribution container matrix, syscall-level no-write/fork accounting, and service
-integration against running daemon instances. POSIX-mode gawk tests are not an actual
-mawk run. `--bench` does not claim an unmeasured fork budget.
+provenance and the listener/outbound scores built on it (these need a working package
+database; `dpkg`, `rpm`, `portage` and `apk` are supported and anything else reports SKIP), the
+full distribution container matrix, live-host syscall/fork accounting, and service
+integration against running daemon instances. See the [0.3.0 validation record](docs/VALIDATION-0.3.0.md)
+for completed checks and limits. `--bench` does not claim an unmeasured fork budget.
 
 ## Limits
 
@@ -243,8 +310,21 @@ The tool does not claim complete application grammar/include resolution, authent
 SQL audit, server-side enrollment verification, vulnerability-database coverage or full
 linPEAS parity. The [coverage ledger](docs/LINPEAS-COVERAGE.md) lists those distinctions.
 
+Triage cuts both ways. Every suppression rule is a decision that some condition is normal,
+and a sufficiently patient attacker can shape an implant to look normal: name a `memfd`
+region `JITCode`, install through the package manager, modify a file on the same day as an
+update. The rules are therefore in one readable table you are expected to edit, the two
+rails above cannot be removed from the table side, and `--no-suppress` exists so that a
+run which matters can be done without any of it. A scanner that reports everything gets
+ignored and a scanner that reports nothing is a liability; this one picks a point between
+and shows its work.
+
+The ATT&CK annotations are a mapping convenience for detection-engineering workflows, not a
+claim that a finding proves the technique was used.
+
 ### OPNsense and pfSense
 
+Keep competition copies within the authorized competition environment.
 The appliance ships no bash and mounts no procfs, so bluesweep cannot run on it. It reads a
 **copy of the appliance filesystem from a Linux host** instead:
 

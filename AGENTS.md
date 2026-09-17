@@ -82,6 +82,49 @@ the first; types where one key legitimately has many lines (`CRON`, `AUTORUN`, `
 ...) go in the second, which folds the value into the key. Then give the type a severity in
 `DIFF_PROG`'s `drift()` — an added `KERNELEXEC` or `OPNUSER` is CRIT, not the MED default.
 
+### Triage is the only place a finding may be lowered
+
+`TRIAGE_PROG` is the single stage allowed to drop, downgrade or collapse a finding. Do not
+add a second one, and do not "fix" a noisy check by quietly raising its threshold in the
+renderer - the renderer is display, and JSON consumers would then disagree with the
+terminal about what was reported.
+
+Three rails, all of them load-bearing:
+
+- **A `CRIT` at confidence `confirmed` can never be dropped**, and never falls more than one
+  level, whatever `SIG_BENIGN` says. A suppression table an attacker can write to must not
+  be able to blind the tool.
+- **`--no-suppress` must keep working.** It disables the table and annotates each finding
+  with the decision triage would have made. `--raw` bypasses the stage entirely.
+- **Rollup spares CRIT and HIGH** (5x the ceiling, minimum 50). Summarising a critical hides
+  the paths an operator has to act on.
+
+Prefer fixing a false positive **in the check** over adding a `SIG_BENIGN` row. The table is
+for conditions that are properties of how Linux works; a check that matches the wrong thing
+is a bug in the check. The distinction is visible in the output: `triage_suppressed` going
+up is a worse outcome than the finding never being raised.
+
+`SIG_BENIGN` fields are separated by `|@|`, not a bare pipe, because the target and evidence
+fields are regular expressions and alternation is the point of them. Splitting on `|` fed
+awk an unbalanced group and killed the run mid-stream.
+
+### Corroboration beats pattern-matching
+
+When a check is about to report a file, ask whether something independent can explain it:
+
+- `OBS PKGOWN` / `OBS PROVENANCE` - does a package own this path? (`col_pkgown` resolves the
+  handful of paths findings actually point at, in `--quick` too; `col_prov` does running
+  executables in `--full`.) Supported managers: `dpkg`, `rpm`, `portage`, `apk`.
+- `PKG_TXN_EPOCHDAY` - did the package manager run on the day this file changed?
+- Effective uid, not real uid, when asking "is this process privileged". Reading the first
+  field of `/proc/PID/status`'s `Uid:` line calls every SUID-root helper an unprivileged
+  process holding capabilities.
+- A second signal before reporting a renamed process, a lone `NOPASSWD`, or a `memfd`
+  mapping. Each of those alone fires on healthy hosts in the double digits.
+
+**A correlation that cannot be made is never an exoneration.** If the package log is
+unreadable, `pkg_txn=0` and the finding is reported. Fail toward saying something.
+
 ### A SKIP is never a pass
 
 Every check declares a fallback chain ending in an explicit `skip` with a reason. A check
@@ -124,8 +167,14 @@ Three stages, three processes:
 ```
 { emit_sig_tables; [diff baseline + MARK]; collect_all; }   # shell: OBS/FIND/SKIP records
   | awk "$RULES_PROG"      # OBS -> FIND via rules; carries SIG tables
+  | awk "$CONFIG_RULES"    # service/application configuration grammars
+  | awk "$TRIAGE_PROG"     # suppression, corroboration, rollup, ATT&CK
   | awk "$RENDER_PROG"     # terminal | NDJSON | exit code
 ```
+
+`SNAPSHOT_PROG` passes `SIG` records through when `keep=1` (the diff path only), because the
+triage stage runs downstream of the diff and needs the tables. A written baseline still
+contains no `SIG` records.
 
 Because collectors already emit `OBS`, **the baseline *is* the collector output** — one
 collection path, so a snapshot can never drift from what's checked. Diff prepends the old
@@ -153,8 +202,11 @@ differently from a CRIT/confirmed. Collapsing them turns the tool into a false-p
 firehose.
 
 File layout: usage → options → **SIGNATURE BLOCK (fenced, editable)** → primitives →
-capability probe → emitters → collectors → checks → awk programs → baseline/diff → export
-modes → selftest → registry → `main "$@"`.
+capability probe → emitters → collectors → checks → awk programs → bounded filesystem
+collectors and export modes → driver (registry, `collect_all`, `main`) → self-tests →
+`main "$@"`. Everything the driver calls is defined above it; checks do not live below the
+self-tests. Keep it that way - it drifted once and the registry ended up naming functions a
+reader had not met yet.
 
 ## Adding a check
 
